@@ -21,7 +21,7 @@ let sock = null;
 
 async function startWhatsapp() {
     // Oturum verilerini saklamak için Baileys multi-file auth kullanıyoruz
-    const { state, saveCreds } = await useMultiFileAuthState('./.wwebjs_auth');
+    const { state, saveCreds } = await useMultiFileAuthState('./.baileys_auth');
 
     sock = makeWASocket({
         auth: state,

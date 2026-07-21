@@ -50,7 +50,7 @@ Railway panelinizde "Variables" sekmesine giderek şu değişkenleri tanımlayı
 Railway'de container'lar her yeniden başladığında (redeploy veya restart durumunda) WhatsApp oturumunun düşmemesi için oturum klasörünü kalıcı kılmanız önerilir:
 
 1.  Railway projenizde **Volume** oluşturun (örn: 1GB disk).
-2.  Oluşturduğunuz Volume'ün **Mount Path** değerini `/.wwebjs_auth` veya `./.wwebjs_auth` olarak ayarlayın.
+2.  Oluşturduğunuz Volume'ün **Mount Path** değerini `/.baileys_auth` veya `./.baileys_auth` olarak ayarlayın.
 3.  Bu sayede giriş yaptıktan sonra sunucu kapansa dahi oturumunuz açık kalacaktır.
 
 ---
