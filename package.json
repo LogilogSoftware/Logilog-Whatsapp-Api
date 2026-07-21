@@ -1,18 +1,19 @@
 {
   "name": "logilog-whatsapp-api",
   "version": "1.0.0",
-  "description": "WhatsApp Web API for Logilog Driver Task Notifications",
+  "description": "WhatsApp API Gateway for Logilog Driver Task Notifications (Baileys)",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
     "dev": "nodemon index.js"
   },
   "dependencies": {
+    "@whiskeysockets/baileys": "^6.6.0",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
-    "qrcode": "^1.5.3",
-    "whatsapp-web.js": "https://github.com/wwebjs/whatsapp-web.js/archive/refs/heads/main.tar.gz"
+    "pino": "^8.19.0",
+    "qrcode": "^1.5.3"
   },
   "devDependencies": {
     "nodemon": "^3.1.0"

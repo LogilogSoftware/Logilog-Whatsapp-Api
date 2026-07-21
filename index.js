@@ -1,12 +1,14 @@
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
-const { Client, LocalAuth } = require('whatsapp-web.js');
 const qrcode = require('qrcode');
+const pino = require('pino');
+const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = require('@whiskeysockets/baileys');
+const { Boom } = require('@hapi/boom');
 
 const app = express();
 const port = process.env.PORT || 3000;
-const apiKey = process.env.API_KEY || 'logilog-secret-key'; // Varsayılan API Key
+const apiKey = process.env.API_KEY || 'logilog-secret-key';
 
 app.use(cors());
 app.use(express.json());
@@ -15,94 +17,60 @@ app.use(express.urlencoded({ extended: true }));
 // Global durum değişkenleri
 let qrCodeImage = null;
 let clientStatus = 'INITIALIZING'; // INITIALIZING, QR_READY, CONNECTING, READY, DISCONNECTED
-let clientInfo = null;
+let sock = null;
 
-// Railway ve Docker ortamlarında Puppeteer'ın düzgün çalışması için gerekli argümanlar eklenmiştir.
-const { execSync } = require('child_process');
-const isProduction = process.env.NODE_ENV === 'production' || !!process.env.PORT;
+async function startWhatsapp() {
+    // Oturum verilerini saklamak için Baileys multi-file auth kullanıyoruz
+    const { state, saveCreds } = await useMultiFileAuthState('./.wwebjs_auth');
 
-let chromePath = process.env.PUPPETEER_EXECUTABLE_PATH;
+    sock = makeWASocket({
+        auth: state,
+        printQRInTerminal: true,
+        logger: pino({ level: 'silent' }) // Log kalabalığını önlemek için silent yapıyoruz
+    });
 
-if (isProduction && !chromePath) {
-    console.log('Production environment detected. Searching for Chromium executable...');
-    try {
-        chromePath = execSync('which chromium').toString().trim();
-        console.log('Found chromium path via which:', chromePath);
-    } catch (e) {
-        try {
-            chromePath = execSync('which chromium-browser').toString().trim();
-            console.log('Found chromium-browser path via which:', chromePath);
-        } catch (e2) {
-            console.log('Chromium not found via which, using fallback: /usr/bin/chromium');
-            chromePath = '/usr/bin/chromium';
+    sock.ev.on('creds.update', saveCreds);
+
+    sock.ev.on('connection.update', async (update) => {
+        const { connection, lastDisconnect, qr } = update;
+
+        if (qr) {
+            clientStatus = 'QR_READY';
+            try {
+                qrCodeImage = await qrcode.toDataURL(qr);
+            } catch (err) {
+                console.error('Failed to generate QR Code image:', err);
+            }
         }
-    }
-} else if (isProduction && chromePath) {
-    console.log('Using configured PUPPETEER_EXECUTABLE_PATH:', chromePath);
+
+        if (connection === 'close') {
+            clientStatus = 'DISCONNECTED';
+            const errorReason = lastDisconnect?.error;
+            const statusCode = errorReason instanceof Boom ? errorReason.output?.statusCode : null;
+            
+            console.log(`Connection closed due to: ${errorReason}. Status code: ${statusCode}`);
+
+            // Eğer kullanıcı cihazı WhatsApp üzerinden silmediyse (loggedOut değilse) yeniden bağlanmayı dene
+            const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
+            if (shouldReconnect) {
+                console.log('Reconnecting to WhatsApp...');
+                setTimeout(startWhatsapp, 3000);
+            } else {
+                console.log('Logged out of WhatsApp. Please scan the QR code again.');
+                // Oturum klasörünü temizleme ihtiyacı olabilir, bu durumda manuel QR gerekecektir.
+                qrCodeImage = null;
+            }
+        } else if (connection === 'open') {
+            clientStatus = 'READY';
+            qrCodeImage = null;
+            console.log('WhatsApp Client is READY (Baileys)!');
+        }
+    });
 }
 
-const client = new Client({
-    authStrategy: new LocalAuth({
-        dataPath: './.wwebjs_auth'
-    }),
-    puppeteer: {
-        headless: true,
-        args: [
-            '--no-sandbox',
-            '--disable-setuid-sandbox',
-            '--disable-dev-shm-usage',
-            '--disable-accelerated-2d-canvas',
-            '--no-first-run',
-            '--no-zygote',
-            '--single-process',
-            '--disable-gpu'
-        ],
-        executablePath: chromePath
-    },
-    userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-    webVersionCache: {
-        type: 'remote',
-        remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2412.54.html'
-    }
-});
-
-// WhatsApp Olay Dinleyicileri (Event Listeners)
-client.on('qr', async (qr) => {
-    clientStatus = 'QR_READY';
-    console.log('QR Code received, generate image...');
-    try {
-        qrCodeImage = await qrcode.toDataURL(qr);
-    } catch (err) {
-        console.error('Failed to generate QR Code image:', err);
-    }
-});
-
-client.on('ready', () => {
-    clientStatus = 'READY';
-    qrCodeImage = null; // Bağlantı sağlandığı için QR kodu temizle
-    clientInfo = client.info;
-    console.log('WhatsApp Client is READY!');
-});
-
-client.on('authenticated', () => {
-    console.log('WhatsApp Client authenticated successfully');
-});
-
-client.on('auth_failure', (msg) => {
-    clientStatus = 'DISCONNECTED';
-    console.error('WhatsApp Authentication failure:', msg);
-});
-
-client.on('disconnected', (reason) => {
-    clientStatus = 'DISCONNECTED';
-    console.log('WhatsApp Client disconnected:', reason);
-    // Yeniden başlatmayı dene
-    client.initialize();
-});
-
-// İstemciyi Başlat
-client.initialize().catch(err => {
-    console.error('Error during client initialization:', err);
+// WhatsApp İstemcisini Başlat
+startWhatsapp().catch(err => {
+    console.error('Error starting WhatsApp socket:', err);
 });
 
 // --- API Güvenlik Ara Katmanı (Middleware) ---
@@ -121,10 +89,9 @@ const authenticateApiKey = (req, res, next) => {
  */
 app.get('/', (req, res) => {
     res.json({
-        name: 'Logilog WhatsApp API Gateway',
+        name: 'Logilog WhatsApp API Gateway (Baileys)',
         status: clientStatus,
-        authenticated: clientStatus === 'READY',
-        info: clientInfo ? { pushname: clientInfo.pushname, wid: clientInfo.wid } : null
+        authenticated: clientStatus === 'READY'
     });
 });
 
@@ -146,7 +113,7 @@ app.get('/qr', (req, res) => {
                 <body>
                     <div class="card">
                         <h1>WhatsApp Bağlantısı Aktif!</h1>
-                        <p>Cihazınız zaten başarıyla bağlandı.</p>
+                        <p>Cihazınız başarıyla bağlandı (Baileys).</p>
                         <p>Durum: <strong>${clientStatus}</strong></p>
                     </div>
                 </body>
@@ -164,7 +131,6 @@ app.get('/qr', (req, res) => {
                         .card { background: white; padding: 30px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); display: inline-block; }
                     </style>
                     <script>
-                        // QR kodunun yüklenip yüklenmediğini kontrol etmek için sayfayı yeniler
                         setTimeout(() => { window.location.reload(); }, 3000);
                     </script>
                 </head>
@@ -190,7 +156,6 @@ app.get('/qr', (req, res) => {
                     h1 { color: #075E54; }
                 </style>
                 <script>
-                    // Bağlantı durumunu kontrol et, bağlandıysa sayfayı yenile
                     setInterval(async () => {
                         try {
                             const res = await fetch('/');
@@ -204,7 +169,7 @@ app.get('/qr', (req, res) => {
             </head>
             <body>
                 <div class="card">
-                    <h1>WhatsApp QR Kodu</h1>
+                    <h1>WhatsApp QR Kodu (Baileys)</h1>
                     <p>Telefonunuzdan WhatsApp -> Bağlı Cihazlar -> Cihaz Bağla adımlarını takip ederek aşağıdaki kodu taratın.</p>
                     <img src="${qrCodeImage}" alt="WhatsApp QR Code" />
                     <p>Mevcut Durum: <strong>${clientStatus}</strong></p>
@@ -228,9 +193,6 @@ app.get('/status', (req, res) => {
 
 /**
  * @api {post} /send-message Sürücülere Görev Bildirimi Gönderme API'si
- * @apiHeader {String} x-api-key API Güvenlik Anahtarı
- * @apiBody {String} phone Alıcının telefon numarası (örn: 905xxxxxxxxx)
- * @apiBody {String} message Gönderilecek mesaj içeriği
  */
 app.post('/send-message', authenticateApiKey, async (req, res) => {
     let { phone, message } = req.body;
@@ -239,31 +201,27 @@ app.post('/send-message', authenticateApiKey, async (req, res) => {
         return res.status(400).json({ success: false, error: 'Phone and message fields are required' });
     }
 
-    if (clientStatus !== 'READY') {
-        return res.status(503).json({ success: false, error: 'WhatsApp client is not ready. Current status: ' + clientStatus });
+    if (clientStatus !== 'READY' || !sock) {
+        return res.status(503).json({ success: false, error: 'WhatsApp socket is not ready. Current status: ' + clientStatus });
     }
 
     try {
-        // Telefon numarasını temizle (sadece sayıları bırak)
         let cleanPhone = phone.toString().replace(/\D/g, '');
 
-        // Eğer numara ülke kodu içermiyorsa ve Türkiye numarası varsayılıyorsa başına 90 ekleyebiliriz.
-        // Ama en sağlıklısı kullanıcının ülke kodlu göndermesidir.
-        // Eğer Türkiye numarası ise ve 5 ile başlıyorsa (10 haneliyse) başına 90 ekleyelim.
         if (cleanPhone.length === 10 && cleanPhone.startsWith('5')) {
             cleanPhone = '90' + cleanPhone;
         }
 
-        // whatsapp-web.js için gerekli olan chatId formatını oluştur (örn: 905300000000@c.us)
-        const chatId = `${cleanPhone}@c.us`;
+        // Baileys formatında chatId: 905xxxxxxxxx@s.whatsapp.net
+        const chatId = `${cleanPhone}@s.whatsapp.net`;
 
-        // Mesajı doğrudan gönder (isRegisteredUser bazen sunucu ortamlarında hata verebilir)
-        const response = await client.sendMessage(chatId, message);
+        // Mesajı gönder
+        const sentMsg = await sock.sendMessage(chatId, { text: message });
 
         res.json({
             success: true,
             message: 'Message sent successfully',
-            messageId: response.id.id,
+            messageId: sentMsg.key.id,
             to: chatId
         });
 
