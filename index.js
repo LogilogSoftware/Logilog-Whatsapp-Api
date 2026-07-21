@@ -252,13 +252,7 @@ app.post('/send-message', authenticateApiKey, async (req, res) => {
         // whatsapp-web.js için gerekli olan chatId formatını oluştur (örn: 905300000000@c.us)
         const chatId = `${cleanPhone}@c.us`;
 
-        // Numaranın WhatsApp'ta kayıtlı olup olmadığını kontrol et
-        const isRegistered = await client.isRegisteredUser(chatId);
-        if (!isRegistered) {
-            return res.status(400).json({ success: false, error: `The phone number ${phone} is not registered on WhatsApp.` });
-        }
-
-        // Mesajı gönder
+        // Mesajı doğrudan gönder (isRegisteredUser bazen sunucu ortamlarında hata verebilir)
         const response = await client.sendMessage(chatId, message);
 
         res.json({
