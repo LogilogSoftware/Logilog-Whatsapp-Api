@@ -222,7 +222,7 @@ app.get('/status', (req, res) => {
  * @api {post} /send-message Sürücülere Görev Bildirimi Gönderme API'si
  */
 app.post('/send-message', authenticateApiKey, async (req, res) => {
-    let { phone, message } = req.body;
+    let { phone, message, mediaUrl } = req.body;
 
     if (!phone || !message) {
         return res.status(400).json({ success: false, error: 'Phone and message fields are required' });
@@ -245,7 +245,12 @@ app.post('/send-message', authenticateApiKey, async (req, res) => {
         const chatId = `${cleanPhone}@s.whatsapp.net`;
 
         // Mesajı gönder
-        const sentMsg = await sock.sendMessage(chatId, { text: message });
+        let sentMsg;
+        if (mediaUrl) {
+            sentMsg = await sock.sendMessage(chatId, { image: { url: mediaUrl }, caption: message });
+        } else {
+            sentMsg = await sock.sendMessage(chatId, { text: message });
+        }
 
         res.json({
             success: true,
