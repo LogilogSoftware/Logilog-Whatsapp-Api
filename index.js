@@ -237,6 +237,8 @@ app.post('/send-message', authenticateApiKey, async (req, res) => {
 
         if (cleanPhone.length === 10 && cleanPhone.startsWith('5')) {
             cleanPhone = '90' + cleanPhone;
+        } else if (cleanPhone.length === 11 && cleanPhone.startsWith('05')) {
+            cleanPhone = '90' + cleanPhone.substring(1);
         }
 
         // Baileys formatında chatId: 905xxxxxxxxx@s.whatsapp.net
