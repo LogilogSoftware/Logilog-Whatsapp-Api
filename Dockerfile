@@ -1,7 +1,8 @@
 FROM node:18-slim
 
-# Puppeteer ve Chromium için gerekli bağımlılıkları yüklüyoruz
+# Puppeteer, Chromium ve Git için gerekli bağımlılıkları yüklüyoruz
 RUN apt-get update && apt-get install -y \
+    git \
     chromium \
     fonts-ipafont-gothic \
     fonts-wqy-zenhei \
