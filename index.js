@@ -20,52 +20,64 @@ let clientStatus = 'INITIALIZING'; // INITIALIZING, QR_READY, CONNECTING, READY,
 let sock = null;
 
 async function startWhatsapp() {
-    // Oturum verilerini saklamak için Baileys multi-file auth kullanıyoruz
-    const { state, saveCreds } = await useMultiFileAuthState('./.baileys_auth');
+    try {
+        console.log('Initializing WhatsApp connection (Baileys)...');
+        // Oturum verilerini saklamak için Baileys multi-file auth kullanıyoruz
+        const { state, saveCreds } = await useMultiFileAuthState('./.baileys_auth');
 
-    sock = makeWASocket({
-        auth: state,
-        printQRInTerminal: true,
-        logger: pino({ level: 'silent' }) // Log kalabalığını önlemek için silent yapıyoruz
-    });
+        sock = makeWASocket({
+            auth: state,
+            printQRInTerminal: true,
+            logger: pino({ level: 'warn' }) // Hataları görebilmek için warn yapıyoruz
+        });
 
-    sock.ev.on('creds.update', saveCreds);
+        sock.ev.on('creds.update', saveCreds);
 
-    sock.ev.on('connection.update', async (update) => {
-        const { connection, lastDisconnect, qr } = update;
-
-        if (qr) {
-            clientStatus = 'QR_READY';
-            try {
-                qrCodeImage = await qrcode.toDataURL(qr);
-            } catch (err) {
-                console.error('Failed to generate QR Code image:', err);
-            }
-        }
-
-        if (connection === 'close') {
-            clientStatus = 'DISCONNECTED';
-            const errorReason = lastDisconnect?.error;
-            const statusCode = errorReason instanceof Boom ? errorReason.output?.statusCode : null;
+        sock.ev.on('connection.update', async (update) => {
+            const { connection, lastDisconnect, qr } = update;
             
-            console.log(`Connection closed due to: ${errorReason}. Status code: ${statusCode}`);
-
-            // Eğer kullanıcı cihazı WhatsApp üzerinden silmediyse (loggedOut değilse) yeniden bağlanmayı dene
-            const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
-            if (shouldReconnect) {
-                console.log('Reconnecting to WhatsApp...');
-                setTimeout(startWhatsapp, 3000);
-            } else {
-                console.log('Logged out of WhatsApp. Please scan the QR code again.');
-                // Oturum klasörünü temizleme ihtiyacı olabilir, bu durumda manuel QR gerekecektir.
-                qrCodeImage = null;
+            if (connection) {
+                console.log('Connection status updated:', connection);
             }
-        } else if (connection === 'open') {
-            clientStatus = 'READY';
-            qrCodeImage = null;
-            console.log('WhatsApp Client is READY (Baileys)!');
-        }
-    });
+
+            if (qr) {
+                clientStatus = 'QR_READY';
+                console.log('New Baileys QR Code received, generating base64 image...');
+                try {
+                    qrCodeImage = await qrcode.toDataURL(qr);
+                } catch (err) {
+                    console.error('Failed to generate QR Code image:', err);
+                }
+            }
+
+            if (connection === 'close') {
+                clientStatus = 'DISCONNECTED';
+                const errorReason = lastDisconnect?.error;
+                const statusCode = errorReason instanceof Boom ? errorReason.output?.statusCode : null;
+                
+                console.log(`Connection closed due to: ${errorReason}. Status code: ${statusCode}`);
+
+                // Eğer kullanıcı cihazı WhatsApp üzerinden silmediyse (loggedOut değilse) yeniden bağlanmayı dene
+                const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
+                if (shouldReconnect) {
+                    console.log('Reconnecting to WhatsApp in 3 seconds...');
+                    setTimeout(startWhatsapp, 3000);
+                } else {
+                    console.log('Logged out of WhatsApp. Please scan the QR code again.');
+                    qrCodeImage = null;
+                }
+            } else if (connection === 'open') {
+                clientStatus = 'READY';
+                qrCodeImage = null;
+                console.log('WhatsApp Client is READY (Baileys)!');
+            }
+        });
+    } catch (err) {
+        console.error('CRITICAL: Error in startWhatsapp function:', err);
+        clientStatus = 'DISCONNECTED';
+        console.log('Retrying to start WhatsApp in 5 seconds...');
+        setTimeout(startWhatsapp, 5000);
+    }
 }
 
 // WhatsApp İstemcisini Başlat
