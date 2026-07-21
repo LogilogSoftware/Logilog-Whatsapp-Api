@@ -3,7 +3,7 @@ const express = require('express');
 const cors = require('cors');
 const qrcode = require('qrcode');
 const pino = require('pino');
-const { useMultiFileAuthState, DisconnectReason } = require('@whiskeysockets/baileys');
+const { useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion } = require('@whiskeysockets/baileys');
 const makeWASocket = require('@whiskeysockets/baileys').default || require('@whiskeysockets/baileys');
 const { Boom } = require('@hapi/boom');
 
@@ -23,11 +23,25 @@ let sock = null;
 async function startWhatsapp() {
     try {
         console.log('Initializing WhatsApp connection (Baileys)...');
+        
+        // En son WhatsApp Web sürümünü çekiyoruz (405 hatasını önlemek için)
+        let version = [2, 3000, 1017531287]; // Kararlı varsayılan sürüm
+        try {
+            const { version: latestVersion } = await fetchLatestBaileysVersion();
+            if (latestVersion) {
+                version = latestVersion;
+                console.log(`Fetched latest WhatsApp Web version: ${version.join('.')}`);
+            }
+        } catch (e) {
+            console.log('Could not fetch latest version, using fallback version:', version.join('.'));
+        }
+
         // Oturum verilerini saklamak için Baileys multi-file auth kullanıyoruz
         const { state, saveCreds } = await useMultiFileAuthState('./.baileys_auth');
 
         sock = makeWASocket({
             auth: state,
+            version: version,
             printQRInTerminal: true,
             logger: pino({ level: 'warn' }) // Hataları görebilmek için warn yapıyoruz
         });
