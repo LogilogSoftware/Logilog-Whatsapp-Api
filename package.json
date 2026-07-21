@@ -12,7 +12,7 @@
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
     "qrcode": "^1.5.3",
-    "whatsapp-web.js": "github:pedroslopez/whatsapp-web.js"
+    "whatsapp-web.js": "https://github.com/pedroslopez/whatsapp-web.js/archive/refs/heads/master.tar.gz"
   },
   "devDependencies": {
     "nodemon": "^3.1.0"
