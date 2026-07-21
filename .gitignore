@@ -1,0 +1,23 @@
+# Dependency directories
+node_modules/
+
+# WhatsApp session data (LocalAuth)
+.wwebjs_auth/
+.wwebjs_cache/
+
+# Environment variables
+.env
+
+# Logs
+logs
+*.log
+npm-debug.log*
+
+# Editor directories and files
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
