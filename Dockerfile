@@ -36,7 +36,7 @@ ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
 ENV PORT=3000
 ENV NODE_ENV=production
 
-RUN npm ci --omit=dev
+RUN npm install --omit=dev
 
 # Proje dosyalarını kopyalıyoruz
 COPY . .
