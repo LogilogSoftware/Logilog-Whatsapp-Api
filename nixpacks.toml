@@ -1,7 +1,0 @@
-# Nixpacks configuration for Railway to support Puppeteer (Chromium)
-
-[phases.setup]
-nixPkgs = ["nodejs-18_x", "chromium"]
-
-[variables]
-PUPPETEER_SKIP_CHROMIUM_DOWNLOAD = "true"
