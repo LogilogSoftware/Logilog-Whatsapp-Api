@@ -247,7 +247,13 @@ app.post('/send-message', authenticateApiKey, async (req, res) => {
         // Mesajı gönder
         let sentMsg;
         if (mediaUrl) {
-            sentMsg = await sock.sendMessage(chatId, { image: { url: mediaUrl }, caption: message });
+            // jpegThumbnail: Buffer.from([]) → Baileys'in önceki resmin thumbnail'ını
+            // önbelleğe alıp arka planda göstermesini engeller (ghost image fix)
+            sentMsg = await sock.sendMessage(chatId, {
+                image: { url: mediaUrl },
+                caption: message,
+                jpegThumbnail: Buffer.from([])
+            });
         } else {
             sentMsg = await sock.sendMessage(chatId, { text: message });
         }
