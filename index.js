@@ -17,8 +17,14 @@ let qrCodeImage = null;
 let clientStatus = 'INITIALIZING'; // INITIALIZING, QR_READY, CONNECTING, READY, DISCONNECTED
 let clientInfo = null;
 
-// WhatsApp Client Yapılandırması
 // Railway ve Docker ortamlarında Puppeteer'ın düzgün çalışması için gerekli argümanlar eklenmiştir.
+const isProduction = process.env.NODE_ENV === 'production' || !!process.env.PORT;
+const chromePath = process.env.PUPPETEER_EXECUTABLE_PATH || (isProduction ? '/usr/bin/chromium' : undefined);
+
+if (isProduction) {
+    console.log('Production environment detected. Using chromium path:', chromePath);
+}
+
 const client = new Client({
     authStrategy: new LocalAuth({
         dataPath: './.wwebjs_auth'
@@ -35,9 +41,7 @@ const client = new Client({
             '--single-process',
             '--disable-gpu'
         ],
-        // Railway Nixpacks veya Docker üzerinde chromium kurulduğunda executablePath belirtmek gerekebilir.
-        // Eğer ortam değişkeninde PUPPETEER_EXECUTABLE_PATH varsa onu kullanır.
-        executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined
+        executablePath: chromePath
     }
 });
 
