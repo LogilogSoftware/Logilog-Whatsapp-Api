@@ -11,25 +11,7 @@ Bu proje, **Logilog** sürücülerine görev bildirimleri göndermek amacıyla g
 *   Detaylı durum takibi (`/status` endpoint'i).
 *   Güvenli mesaj gönderme endpoint'i (`/send-message`).
 
----
 
-## Kurulum ve Yerel Çalıştırma
-
-1.  Bağımlılıkları yükleyin:
-    ```bash
-    npm install
-    ```
-
-2.  `.env` dosyasını oluşturun (zaten oluşturulmuştur, gerekirse düzenleyin):
-    *   `PORT`: Sunucunun çalışacağı port (varsayılan: 3000)
-    *   `API_KEY`: API isteklerini doğrulamak için kullanılacak güvenli anahtar (varsayılan: `logilog-secret-key`)
-
-3.  Projeyi yerel modda başlatın:
-    ```bash
-    npm run dev
-    ```
-
-4.  Tarayıcınızdan `http://localhost:3000/qr` adresine giderek QR kodunu taratın.
 
 ---
 
@@ -118,3 +100,108 @@ Sürücülere görev bildirimi göndermek için bu API ucunu kullanın.
       "error": "Unauthorized: Invalid or missing API Key"
     }
     ```
+
+---
+
+### 4. Diğer Uygulamalardan API'ye İstek Atma Örnekleri
+
+Kendi yazılımlarınızdan Logilog WhatsApp API'sine (Railway üzerindeki sunucunuza) mesaj göndermek için aşağıdaki kod örneklerini kullanabilirsiniz.
+
+#### 💻 cURL (Terminal / Bash)
+```bash
+curl -X POST "https://logilogwhatsapp.up.railway.app/send-message" \
+     -H "x-api-key: logilog-secret-key" \
+     -H "Content-Type: application/json" \
+     -d '{
+           "phone": "05414764062",
+           "message": "Merhaba! Bu cURL üzerinden gönderilmiş bir test mesajıdır."
+         }'
+```
+
+#### 🌐 JavaScript (Fetch API / Node.js)
+```javascript
+const sendWhatsAppMessage = async () => {
+    try {
+        const response = await fetch('https://logilogwhatsapp.up.railway.app/send-message', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'x-api-key': 'logilog-secret-key' // Güvenlik anahtarınız
+            },
+            body: JSON.stringify({
+                phone: '05414764062',
+                message: 'Merhaba! JavaScript Fetch API üzerinden mesaj.'
+            })
+        });
+
+        const data = await response.json();
+        console.log(data);
+    } catch (error) {
+        console.error('Mesaj gönderilirken hata oluştu:', error);
+    }
+};
+
+sendWhatsAppMessage();
+```
+
+#### 🐘 PHP (cURL)
+```php
+<?php
+$curl = curl_init();
+
+$payload = json_encode([
+    "phone" => "05414764062",
+    "message" => "Merhaba! PHP cURL üzerinden gönderilmiş bir mesajdır."
+]);
+
+curl_setopt_array($curl, [
+    CURLOPT_URL => "https://logilogwhatsapp.up.railway.app/send-message",
+    CURLOPT_RETURNTRANSFER => true,
+    CURLOPT_ENCODING => "",
+    CURLOPT_MAXREDIRS => 10,
+    CURLOPT_TIMEOUT => 30,
+    CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
+    CURLOPT_CUSTOMREQUEST => "POST",
+    CURLOPT_POSTFIELDS => $payload,
+    CURLOPT_HTTPHEADER => [
+        "Content-Type: application/json",
+        "x-api-key: logilog-secret-key"
+    ],
+]);
+
+$response = curl_exec($curl);
+$err = curl_error($curl);
+curl_close($curl);
+
+if ($err) {
+    echo "cURL Error #:" . $err;
+} else {
+    echo $response;
+}
+?>
+```
+
+#### 🔷 C# (HttpClient)
+```csharp
+using System;
+using System.Net.Http;
+using System.Text;
+using System.Threading.Tasks;
+
+class Program
+{
+    static async Task Main(string[] args)
+    {
+        var client = new HttpClient();
+        client.DefaultRequestHeaders.Add("x-api-key", "logilog-secret-key");
+
+        var jsonPayload = "{\"phone\": \"05414764062\", \"message\": \"Merhaba! C# üzerinden gönderilmiş mesaj.\"}";
+        var content = new StringContent(jsonPayload, Encoding.UTF8, "application/json");
+
+        var response = await client.PostAsync("https://logilogwhatsapp.up.railway.app/send-message", content);
+        var responseString = await response.Content.ReadAsStringAsync();
+        
+        Console.WriteLine(responseString);
+    }
+}
+```
