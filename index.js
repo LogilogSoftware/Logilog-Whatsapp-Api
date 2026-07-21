@@ -3,7 +3,7 @@ const express = require('express');
 const cors = require('cors');
 const qrcode = require('qrcode');
 const pino = require('pino');
-const { useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion } = require('@whiskeysockets/baileys');
+const { useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion, Browsers } = require('@whiskeysockets/baileys');
 const makeWASocket = require('@whiskeysockets/baileys').default || require('@whiskeysockets/baileys');
 const { Boom } = require('@hapi/boom');
 
@@ -42,7 +42,7 @@ async function startWhatsapp() {
         sock = makeWASocket({
             auth: state,
             version: version,
-            printQRInTerminal: true,
+            browser: Browsers.macOS('Desktop'),
             logger: pino({ level: 'warn' }) // Hataları görebilmek için warn yapıyoruz
         });
 
