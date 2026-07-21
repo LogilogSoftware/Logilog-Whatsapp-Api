@@ -18,11 +18,27 @@ let clientStatus = 'INITIALIZING'; // INITIALIZING, QR_READY, CONNECTING, READY,
 let clientInfo = null;
 
 // Railway ve Docker ortamlarında Puppeteer'ın düzgün çalışması için gerekli argümanlar eklenmiştir.
+const { execSync } = require('child_process');
 const isProduction = process.env.NODE_ENV === 'production' || !!process.env.PORT;
-const chromePath = process.env.PUPPETEER_EXECUTABLE_PATH || (isProduction ? '/usr/bin/chromium' : undefined);
 
-if (isProduction) {
-    console.log('Production environment detected. Using chromium path:', chromePath);
+let chromePath = process.env.PUPPETEER_EXECUTABLE_PATH;
+
+if (isProduction && !chromePath) {
+    console.log('Production environment detected. Searching for Chromium executable...');
+    try {
+        chromePath = execSync('which chromium').toString().trim();
+        console.log('Found chromium path via which:', chromePath);
+    } catch (e) {
+        try {
+            chromePath = execSync('which chromium-browser').toString().trim();
+            console.log('Found chromium-browser path via which:', chromePath);
+        } catch (e2) {
+            console.log('Chromium not found via which, using fallback: /usr/bin/chromium');
+            chromePath = '/usr/bin/chromium';
+        }
+    }
+} else if (isProduction && chromePath) {
+    console.log('Using configured PUPPETEER_EXECUTABLE_PATH:', chromePath);
 }
 
 const client = new Client({
