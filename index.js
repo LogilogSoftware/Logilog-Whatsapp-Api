@@ -20,6 +20,10 @@ let qrCodeImage = null;
 let clientStatus = 'INITIALIZING'; // INITIALIZING, QR_READY, CONNECTING, READY, DISCONNECTED
 let sock = null;
 
+// Steel Logistics logosundan önceden üretilmiş doğru thumbnail (72x72 JPEG, base64)
+// Bu sayede WhatsApp Web scroll sırasında arka planda yanlış resim göstermez
+const STEEL_LOGO_THUMBNAIL = Buffer.from('/9j/2wBDAA0JCgsKCA0LCgsODg0PEyAVExISEyccHhcgLikxMC4pLSwzOko+MzZGNywtQFdBRkxOUlNSMj5aYVpQYEpRUk//2wBDAQ4ODhMREyYVFSZPNS01T09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT0//wAARCABIAEgDASIAAhEBAxEB/8QAGgABAAMBAQEAAAAAAAAAAAAAAAECBgMFBP/EAC4QAAEDBAEEAQIEBwAAAAAAAAEAAgMEBRESIQYTMVFhFEEVImKBI0JSU3GRof/EABgBAQEBAQEAAAAAAAAAAAAAAAABAgME/8QAGBEBAQEBAQAAAAAAAAAAAAAAAAERIUH/2gAMAwEAAhEDEQA/AMAinCL07HJCIoyrolFGybfCaJRV2+E2+E0WRV2+ETRdRlRlRlYVJK+q22ytutR2aGndK4DLiOGsHtxPAH+V8a1HTMDqix1kQn0EtdTR9t7No5HHOGvwQQ0ng4/0l4RA6dtYpC193f3w7U1TYCaNrv6DJ7/V4Xi3O011qmEdbAWBwyyQHZkg9tcOCtq+4VVddexbqt1DXwfwX2eox9PKB5bHwBzjwRn5XldSvp29P/TwNfDrdJHCmewtNONBlnrg+jjlZlq2MiilFtkREQSoREBenZ7wbdHNTT0sVXRVBa6WF5LTlvhzXDlpGfK9fo6jjqqaoH4cZpnTMY2odSCpjjGOWuZkEZ87BdKR8VLa76JLfap5rdIxscgpw5rtpSDznkY8elm3xcfe2+0f0vfF/lbCG6aupwa9o/ttk8a/qWYvF6+vgjo6WlZSUMUhkbGHF73PIwXveeS4haCqoGN6PpZ6W2te+ShMkkjbeJPzZOSZdhqQPg+FbqK3R09midS21rYzTwOdK23jAyG7Hvbef2++FJi1h0Wh6xs1Rb71WTR0D4LeZg2F4ZiM8Dgf9WeWpdQREVQRW1CahXAjcGbcuGW4BacLp3IfAicBrggH7+1z1CahB0ErAzXV3lv8xxj7j907rSCCHYIOBscDnjhc9QmoQTLIH667AADILicn2qK2oTUJgqitqETBKIiqCIiAiIgIiICIiD//2Q==', 'base64');
+
 async function startWhatsapp() {
     try {
         console.log('Initializing WhatsApp connection (Baileys)...');
@@ -247,12 +251,12 @@ app.post('/send-message', authenticateApiKey, async (req, res) => {
         // Mesajı gönder
         let sentMsg;
         if (mediaUrl) {
-            // jpegThumbnail: Buffer.from([]) → Baileys'in önceki resmin thumbnail'ını
-            // önbelleğe alıp arka planda göstermesini engeller (ghost image fix)
+            // jpegThumbnail olarak Steel Logistics logosunun doğru küçük versiyonunu gönder
+            // Böylece WhatsApp Web scroll sırasında arka planda yanlış resim göstermez
             sentMsg = await sock.sendMessage(chatId, {
                 image: { url: mediaUrl },
                 caption: message,
-                jpegThumbnail: Buffer.from([])
+                jpegThumbnail: STEEL_LOGO_THUMBNAIL
             });
         } else {
             sentMsg = await sock.sendMessage(chatId, { text: message });
