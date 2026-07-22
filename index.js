@@ -49,10 +49,26 @@ let sock = null;
 // Bu sayede WhatsApp Web scroll sırasında arka planda yanlış resim göstermez
 const STEEL_LOGO_THUMBNAIL = Buffer.from('/9j/2wBDAA0JCgsKCA0LCgsODg0PEyAVExISEyccHhcgLikxMC4pLSwzOko+MzZGNywtQFdBRkxOUlNSMj5aYVpQYEpRUk//2wBDAQ4ODhMREyYVFSZPNS01T09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT0//wAARCABIAEgDASIAAhEBAxEB/8QAGgABAAMBAQEAAAAAAAAAAAAAAAECBgMFBP/EAC4QAAEDBAEEAQIEBwAAAAAAAAEAAgMEBRESIQYTMVFhFEEVImKBI0JSU3GRof/EABgBAQEBAQEAAAAAAAAAAAAAAAABAgME/8QAGBEBAQEBAQAAAAAAAAAAAAAAAAERIUH/2gAMAwEAAhEDEQA/AMAinCL07HJCIoyrolFGybfCaJRV2+E2+E0WRV2+ETRdRlRlRlYVJK+q22ytutR2aGndK4DLiOGsHtxPAH+V8a1HTMDqix1kQn0EtdTR9t7No5HHOGvwQQ0ng4/0l4RA6dtYpC193f3w7U1TYCaNrv6DJ7/V4Xi3O011qmEdbAWBwyyQHZkg9tcOCtq+4VVddexbqt1DXwfwX2eox9PKB5bHwBzjwRn5XldSvp29P/TwNfDrdJHCmewtNONBlnrg+jjlZlq2MiilFtkREQSoREBenZ7wbdHNTT0sVXRVBa6WF5LTlvhzXDlpGfK9fo6jjqqaoH4cZpnTMY2odSCpjjGOWuZkEZ87BdKR8VLa76JLfap5rdIxscgpw5rtpSDznkY8elm3xcfe2+0f0vfF/lbCG6aupwa9o/ttk8a/qWYvF6+vgjo6WlZSUMUhkbGHF73PIwXveeS4haCqoGN6PpZ6W2te+ShMkkjbeJPzZOSZdhqQPg+FbqK3R09midS21rYzTwOdK23jAyG7Hvbef2++FJi1h0Wh6xs1Rb71WTR0D4LeZg2F4ZiM8Dgf9WeWpdQREVQRW1CahXAjcGbcuGW4BacLp3IfAicBrggH7+1z1CahB0ErAzXV3lv8xxj7j907rSCCHYIOBscDnjhc9QmoQTLIH667AADILicn2qK2oTUJgqitqETBKIiqCIiAiIgIiICIiD//2Q==', 'base64');
 
+let isInitializing = false;
+
 async function startWhatsapp() {
+    if (isInitializing) {
+        console.log('[WhatsApp] Bağlantı zaten başlatılıyor, mükerrer başlatma engellendi.');
+        return;
+    }
+    isInitializing = true;
+
     try {
         console.log('Initializing WhatsApp connection (Baileys)...');
         
+        if (sock) {
+            try {
+                sock.ev.removeAllListeners();
+                sock.ws?.close();
+            } catch (e) {}
+            sock = null;
+        }
+
         // En son WhatsApp Web sürümünü çekiyoruz (405 hatasını önlemek için)
         let version = [2, 3000, 1017531287]; // Kararlı varsayılan sürüm
         try {
@@ -72,7 +88,8 @@ async function startWhatsapp() {
             auth: state,
             version: version,
             browser: Browsers.macOS('Desktop'),
-            logger: pino({ level: 'silent' }) // Baileys'in detaylı içsel oturum ve hata loglarını sessize alıyoruz
+            logger: pino({ level: 'silent' }), // Baileys'in detaylı içsel oturum ve hata loglarını sessize alıyoruz
+            qrTimeout: 60000 // QR süresini 60 sn tutuyoruz
         });
 
         sock.ev.on('creds.update', saveCreds);
@@ -95,6 +112,7 @@ async function startWhatsapp() {
             }
 
             if (connection === 'close') {
+                isInitializing = false;
                 clientStatus = 'DISCONNECTED';
                 const errorReason = lastDisconnect?.error;
                 const statusCode = errorReason instanceof Boom ? errorReason.output?.statusCode : null;
@@ -103,8 +121,14 @@ async function startWhatsapp() {
                 console.log(`[WhatsApp] Bağlantı kapandı. Neden: ${errMessage} (Durum Kodu: ${statusCode || 'N/A'})`);
 
                 const isLoggedOut = statusCode === DisconnectReason.loggedOut || statusCode === 401;
-                if (isLoggedOut) {
-                    console.log('[WhatsApp] Oturum mobil cihazdan kapatıldı. Soket temizleniyor ve 1.5 sn sonra oturum klasörü silinecek...');
+                const isQrTimedOut = statusCode === DisconnectReason.timedOut || statusCode === 408 || errMessage.includes('QR refs attempts ended');
+
+                if (isLoggedOut || isQrTimedOut) {
+                    if (isQrTimedOut) {
+                        console.log('[WhatsApp] QR kodunun taranma süresi doldu (Zaman Aşımı). Oturum klasörü temizleniyor ve yenisi üretilecek...');
+                    } else {
+                        console.log('[WhatsApp] Oturum mobil cihazdan kapatıldı. Soket temizleniyor ve 1.5 sn sonra oturum klasörü silinecek...');
+                    }
                     qrCodeImage = null;
                     
                     if (sock) {
@@ -124,12 +148,14 @@ async function startWhatsapp() {
                     setTimeout(startWhatsapp, 3000);
                 }
             } else if (connection === 'open') {
+                isInitializing = false;
                 clientStatus = 'READY';
                 qrCodeImage = null;
                 console.log('[WhatsApp] WhatsApp İstemcisi HAZIR (Baileys)!');
             }
         });
     } catch (err) {
+        isInitializing = false;
         console.error('[WhatsApp] BAĞLANTI HATASI:', err.message || err);
         clientStatus = 'DISCONNECTED';
         console.log('[WhatsApp] 5 saniye sonra tekrar deneniyor...');
