@@ -185,7 +185,12 @@ startWhatsapp().catch(err => {
 // --- API Güvenlik Ara Katmanı (Middleware) ---
 const authenticateApiKey = (req, res, next) => {
     const receivedKey = req.headers['x-api-key'] || req.query.api_key;
+    const maskedReceived = receivedKey ? (receivedKey.length > 4 ? receivedKey.substring(0, 3) + '...' : '***') : 'YOK';
+    const maskedExpected = apiKey ? (apiKey.length > 4 ? apiKey.substring(0, 3) + '...' : '***') : 'YOK';
+    
+    console.log(`[API] Kimlik doğrulama isteği alındı. Gelen Key: ${maskedReceived}`);
     if (!receivedKey || receivedKey !== apiKey) {
+        console.warn(`[API] Yetkisiz erişim denemesi! Beklenen Key: ${maskedExpected}, Gelen Key: ${maskedReceived}`);
         return res.status(401).json({ success: false, error: 'Unauthorized: Invalid or missing API Key' });
     }
     next();
@@ -350,12 +355,15 @@ app.get('/reset', (req, res) => {
  */
 app.post('/send-message', authenticateApiKey, async (req, res) => {
     let { phone, message, mediaUrl } = req.body;
+    console.log(`[API] Mesaj gönderme isteği alındı. Hedef: ${phone}, Mesaj Boyutu: ${message ? message.length : 0} karakter, Media: ${mediaUrl ? 'VAR' : 'YOK'}`);
 
     if (!phone || !message) {
+        console.warn('[API] Eksik parametre: Telefon veya mesaj boş.');
         return res.status(400).json({ success: false, error: 'Phone and message fields are required' });
     }
 
     if (clientStatus !== 'READY' || !sock) {
+        console.warn(`[API] Mesaj gönderilemedi. WhatsApp hazır değil. Durum: ${clientStatus}`);
         return res.status(503).json({ success: false, error: 'WhatsApp socket is not ready. Current status: ' + clientStatus });
     }
 
@@ -385,6 +393,7 @@ app.post('/send-message', authenticateApiKey, async (req, res) => {
             sentMsg = await sock.sendMessage(chatId, { text: message });
         }
 
+        console.log(`[API] Mesaj başarıyla gönderildi. Mesaj ID: ${sentMsg.key.id}, Alıcı: ${chatId}`);
         res.json({
             success: true,
             message: 'Message sent successfully',
@@ -393,7 +402,7 @@ app.post('/send-message', authenticateApiKey, async (req, res) => {
         });
 
     } catch (error) {
-        console.error('Error sending message:', error);
+        console.error('[API] Mesaj gönderilirken hata oluştu:', error);
         res.status(500).json({ success: false, error: 'Internal server error: ' + error.message });
     }
 });
