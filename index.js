@@ -9,8 +9,10 @@ const { useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion, Brow
 const makeWASocket = require('@whiskeysockets/baileys').default || require('@whiskeysockets/baileys');
 const { Boom } = require('@hapi/boom');
 
+const AUTH_DIR = process.env.AUTH_DIR || './.baileys_auth';
+
 function clearAuthFolder() {
-    const authPath = './.baileys_auth';
+    const authPath = AUTH_DIR;
     if (!fs.existsSync(authPath)) return;
     
     try {
@@ -26,9 +28,9 @@ function clearAuthFolder() {
         try {
             fs.rmSync(authPath, { recursive: true, force: true });
         } catch (e) {}
-        console.log('[WhatsApp] Eski .baileys_auth oturum klasörü başarıyla temizlendi.');
+        console.log(`[WhatsApp] Eski ${authPath} oturum klasörü başarıyla temizlendi.`);
     } catch (e) {
-        console.error('[WhatsApp] Auth klasörü silinirken hata oluştu:', e.message);
+        console.error(`[WhatsApp] ${authPath} klasörü silinirken hata oluştu:`, e.message);
     }
 }
 
@@ -82,14 +84,18 @@ async function startWhatsapp() {
         }
 
         // Oturum verilerini saklamak için Baileys multi-file auth kullanıyoruz
-        const { state, saveCreds } = await useMultiFileAuthState('./.baileys_auth');
+        const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
 
         sock = makeWASocket({
             auth: state,
             version: version,
             browser: Browsers.macOS('Desktop'),
             logger: pino({ level: 'silent' }), // Baileys'in detaylı içsel oturum ve hata loglarını sessize alıyoruz
-            qrTimeout: 60000 // QR süresini 60 sn tutuyoruz
+            qrTimeout: 60000, // QR süresini 60 sn tutuyoruz
+            keepAliveIntervalMs: 30000, // Sunucu ile bağlantıyı canlı tutmak için her 30 sn'de bir ping atar
+            markOnlineOnConnect: true,
+            connectTimeoutMs: 60000,
+            syncFullHistory: false
         });
 
         sock.ev.on('creds.update', saveCreds);
