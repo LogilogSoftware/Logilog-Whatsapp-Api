@@ -4,9 +4,33 @@ const cors = require('cors');
 const qrcode = require('qrcode');
 const pino = require('pino');
 const fs = require('fs');
+const path = require('path');
 const { useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion, Browsers } = require('@whiskeysockets/baileys');
 const makeWASocket = require('@whiskeysockets/baileys').default || require('@whiskeysockets/baileys');
 const { Boom } = require('@hapi/boom');
+
+function clearAuthFolder() {
+    const authPath = './.baileys_auth';
+    if (!fs.existsSync(authPath)) return;
+    
+    try {
+        const files = fs.readdirSync(authPath);
+        for (const file of files) {
+            const filePath = path.join(authPath, file);
+            try {
+                fs.rmSync(filePath, { recursive: true, force: true });
+            } catch (e) {
+                // Silinirken geçici kilitlenme olursa yoksay
+            }
+        }
+        try {
+            fs.rmSync(authPath, { recursive: true, force: true });
+        } catch (e) {}
+        console.log('[WhatsApp] Eski .baileys_auth oturum klasörü başarıyla temizlendi.');
+    } catch (e) {
+        console.error('[WhatsApp] Auth klasörü silinirken hata oluştu:', e.message);
+    }
+}
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -80,17 +104,21 @@ async function startWhatsapp() {
 
                 const isLoggedOut = statusCode === DisconnectReason.loggedOut || statusCode === 401;
                 if (isLoggedOut) {
-                    console.log('[WhatsApp] Oturum mobil cihazdan kapatıldı. Eski oturum verileri temizlenip yeni QR kod oluşturuluyor...');
+                    console.log('[WhatsApp] Oturum mobil cihazdan kapatıldı. Soket temizleniyor ve 1.5 sn sonra oturum klasörü silinecek...');
                     qrCodeImage = null;
-                    try {
-                        if (fs.existsSync('./.baileys_auth')) {
-                            fs.rmSync('./.baileys_auth', { recursive: true, force: true });
-                            console.log('[WhatsApp] Eski .baileys_auth klasörü temizlendi.');
-                        }
-                    } catch (e) {
-                        console.error('[WhatsApp] Auth klasörü temizlenirken hata oluştu:', e.message);
+                    
+                    if (sock) {
+                        try {
+                            sock.ev.removeAllListeners();
+                            sock.ws?.close();
+                        } catch (e) {}
+                        sock = null;
                     }
-                    setTimeout(startWhatsapp, 2000);
+
+                    setTimeout(() => {
+                        clearAuthFolder();
+                        setTimeout(startWhatsapp, 1500);
+                    }, 1500);
                 } else {
                     console.log('[WhatsApp] 3 saniye içinde yeniden bağlanılacak...');
                     setTimeout(startWhatsapp, 3000);
@@ -230,6 +258,51 @@ app.get('/status', (req, res) => {
         authenticated: clientStatus === 'READY',
         hasQr: !!qrCodeImage
     });
+});
+
+/**
+ * @api {get} /reset Oturumu Manuel Sıfırlama ve Yeni QR Oluşturma Uç Noktası
+ */
+app.get('/reset', (req, res) => {
+    console.log('[WhatsApp] Manuel sıfırlama isteği alındı. Oturum temizleniyor...');
+    clientStatus = 'INITIALIZING';
+    qrCodeImage = null;
+
+    if (sock) {
+        try {
+            sock.ev.removeAllListeners();
+            sock.ws?.close();
+        } catch (e) {}
+        sock = null;
+    }
+
+    setTimeout(() => {
+        clearAuthFolder();
+        setTimeout(startWhatsapp, 1500);
+    }, 1000);
+
+    res.send(`
+        <html>
+            <head>
+                <title>WhatsApp API - Resetting</title>
+                <style>
+                    body { font-family: Arial, sans-serif; text-align: center; padding: 50px; background-color: #f4f7f6; color: #333; }
+                    .card { background: white; padding: 30px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); display: inline-block; }
+                    h1 { color: #d9534f; }
+                </style>
+                <script>
+                    setTimeout(() => { window.location.href = '/qr'; }, 4000);
+                </script>
+            </head>
+            <body>
+                <div class="card">
+                    <h1>Oturum Sıfırlanıyor...</h1>
+                    <p>Eski oturum verileri temizleniyor ve yeni QR kodu oluşturuluyor.</p>
+                    <p>Lütfen bekleyin, 4 saniye içinde QR kod sayfasına yönlendiriliyorsunuz...</p>
+                </div>
+            </body>
+        </html>
+    `);
 });
 
 /**
