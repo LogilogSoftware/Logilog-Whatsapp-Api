@@ -189,7 +189,8 @@ async function startWhatsapp() {
                 isInitializing = false;
                 clientStatus = 'READY';
                 qrCodeImage = null;
-                console.log('[WhatsApp] WhatsApp İstemcisi HAZIR (Baileys)!');
+                const userPhone = sock.user?.id ? sock.user.id.split(':')[0] : 'Bilinmiyor';
+                console.log(`[WhatsApp] WhatsApp İstemcisi HAZIR (Baileys)! Bağlı Hesap: ${userPhone}`);
             }
         });
     } catch (err) {
@@ -229,7 +230,8 @@ app.get('/', (req, res) => {
     res.json({
         name: 'Logilog WhatsApp API Gateway (Baileys)',
         status: clientStatus,
-        authenticated: clientStatus === 'READY'
+        authenticated: clientStatus === 'READY',
+        connectedNumber: sock?.user?.id ? sock.user.id.split(':')[0] : null
     });
 });
 
