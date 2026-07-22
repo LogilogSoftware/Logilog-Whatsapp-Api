@@ -127,14 +127,11 @@ async function startWhatsapp() {
                 console.log(`[WhatsApp] Bağlantı kapandı. Neden: ${errMessage} (Durum Kodu: ${statusCode || 'N/A'})`);
 
                 const isLoggedOut = statusCode === DisconnectReason.loggedOut || statusCode === 401;
-                const isQrTimedOut = statusCode === DisconnectReason.timedOut || statusCode === 408 || errMessage.includes('QR refs attempts ended');
+                const isBadSession = statusCode === DisconnectReason.badSession || statusCode === 400;
+                const isQrTimedOut = errMessage.includes('QR refs attempts ended');
 
-                if (isLoggedOut || isQrTimedOut) {
-                    if (isQrTimedOut) {
-                        console.log('[WhatsApp] QR kodunun taranma süresi doldu (Zaman Aşımı). Oturum klasörü temizleniyor ve yenisi üretilecek...');
-                    } else {
-                        console.log('[WhatsApp] Oturum mobil cihazdan kapatıldı. Soket temizleniyor ve 1.5 sn sonra oturum klasörü silinecek...');
-                    }
+                if (isLoggedOut || isBadSession) {
+                    console.log(`[WhatsApp] Oturum kapatıldı veya geçersiz (Durum: ${statusCode}). Oturum klasörü temizlenip yeniden başlatılıyor...`);
                     qrCodeImage = null;
                     
                     if (sock) {
@@ -149,6 +146,17 @@ async function startWhatsapp() {
                         clearAuthFolder();
                         setTimeout(startWhatsapp, 1500);
                     }, 1500);
+                } else if (isQrTimedOut) {
+                    console.log('[WhatsApp] QR kod tarama süresi doldu. Yeni QR kod oluşturuluyor...');
+                    qrCodeImage = null;
+                    if (sock) {
+                        try {
+                            sock.ev.removeAllListeners();
+                            sock.ws?.close();
+                        } catch (e) {}
+                        sock = null;
+                    }
+                    setTimeout(startWhatsapp, 1500);
                 } else {
                     console.log('[WhatsApp] 3 saniye içinde yeniden bağlanılacak...');
                     setTimeout(startWhatsapp, 3000);

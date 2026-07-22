@@ -4,6 +4,7 @@ node_modules/
 # WhatsApp session data (LocalAuth)
 .wwebjs_auth/
 .wwebjs_cache/
+.baileys_auth/
 
 # Environment variables
 .env
