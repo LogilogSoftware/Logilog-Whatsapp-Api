@@ -3,6 +3,7 @@ const express = require('express');
 const cors = require('cors');
 const qrcode = require('qrcode');
 const pino = require('pino');
+const fs = require('fs');
 const { useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion, Browsers } = require('@whiskeysockets/baileys');
 const makeWASocket = require('@whiskeysockets/baileys').default || require('@whiskeysockets/baileys');
 const { Boom } = require('@hapi/boom');
@@ -77,14 +78,22 @@ async function startWhatsapp() {
                 
                 console.log(`[WhatsApp] Bağlantı kapandı. Neden: ${errMessage} (Durum Kodu: ${statusCode || 'N/A'})`);
 
-                // Eğer kullanıcı cihazı WhatsApp üzerinden silmediyse (loggedOut değilse) yeniden bağlanmayı dene
-                const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
-                if (shouldReconnect) {
+                const isLoggedOut = statusCode === DisconnectReason.loggedOut || statusCode === 401;
+                if (isLoggedOut) {
+                    console.log('[WhatsApp] Oturum mobil cihazdan kapatıldı. Eski oturum verileri temizlenip yeni QR kod oluşturuluyor...');
+                    qrCodeImage = null;
+                    try {
+                        if (fs.existsSync('./.baileys_auth')) {
+                            fs.rmSync('./.baileys_auth', { recursive: true, force: true });
+                            console.log('[WhatsApp] Eski .baileys_auth klasörü temizlendi.');
+                        }
+                    } catch (e) {
+                        console.error('[WhatsApp] Auth klasörü temizlenirken hata oluştu:', e.message);
+                    }
+                    setTimeout(startWhatsapp, 2000);
+                } else {
                     console.log('[WhatsApp] 3 saniye içinde yeniden bağlanılacak...');
                     setTimeout(startWhatsapp, 3000);
-                } else {
-                    console.log('[WhatsApp] Oturum kapatıldı. Lütfen QR kodunu tekrar taratın.');
-                    qrCodeImage = null;
                 }
             } else if (connection === 'open') {
                 clientStatus = 'READY';
