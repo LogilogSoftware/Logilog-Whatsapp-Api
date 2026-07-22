@@ -47,7 +47,7 @@ async function startWhatsapp() {
             auth: state,
             version: version,
             browser: Browsers.macOS('Desktop'),
-            logger: pino({ level: 'warn' }) // Hataları görebilmek için warn yapıyoruz
+            logger: pino({ level: 'silent' }) // Baileys'in detaylı içsel oturum ve hata loglarını sessize alıyoruz
         });
 
         sock.ev.on('creds.update', saveCreds);
@@ -56,16 +56,16 @@ async function startWhatsapp() {
             const { connection, lastDisconnect, qr } = update;
             
             if (connection) {
-                console.log('Connection status updated:', connection);
+                console.log('[WhatsApp] Bağlantı durumu:', connection);
             }
 
             if (qr) {
                 clientStatus = 'QR_READY';
-                console.log('New Baileys QR Code received, generating base64 image...');
+                console.log('[WhatsApp] Yeni QR kodu oluşturuldu.');
                 try {
                     qrCodeImage = await qrcode.toDataURL(qr);
                 } catch (err) {
-                    console.error('Failed to generate QR Code image:', err);
+                    console.error('[WhatsApp] QR Kod görseli oluşturulamadı:', err.message);
                 }
             }
 
@@ -73,28 +73,29 @@ async function startWhatsapp() {
                 clientStatus = 'DISCONNECTED';
                 const errorReason = lastDisconnect?.error;
                 const statusCode = errorReason instanceof Boom ? errorReason.output?.statusCode : null;
+                const errMessage = errorReason?.message || 'Bilinmeyen Neden';
                 
-                console.log(`Connection closed due to: ${errorReason}. Status code: ${statusCode}`);
+                console.log(`[WhatsApp] Bağlantı kapandı. Neden: ${errMessage} (Durum Kodu: ${statusCode || 'N/A'})`);
 
                 // Eğer kullanıcı cihazı WhatsApp üzerinden silmediyse (loggedOut değilse) yeniden bağlanmayı dene
                 const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
                 if (shouldReconnect) {
-                    console.log('Reconnecting to WhatsApp in 3 seconds...');
+                    console.log('[WhatsApp] 3 saniye içinde yeniden bağlanılacak...');
                     setTimeout(startWhatsapp, 3000);
                 } else {
-                    console.log('Logged out of WhatsApp. Please scan the QR code again.');
+                    console.log('[WhatsApp] Oturum kapatıldı. Lütfen QR kodunu tekrar taratın.');
                     qrCodeImage = null;
                 }
             } else if (connection === 'open') {
                 clientStatus = 'READY';
                 qrCodeImage = null;
-                console.log('WhatsApp Client is READY (Baileys)!');
+                console.log('[WhatsApp] WhatsApp İstemcisi HAZIR (Baileys)!');
             }
         });
     } catch (err) {
-        console.error('CRITICAL: Error in startWhatsapp function:', err);
+        console.error('[WhatsApp] BAĞLANTI HATASI:', err.message || err);
         clientStatus = 'DISCONNECTED';
-        console.log('Retrying to start WhatsApp in 5 seconds...');
+        console.log('[WhatsApp] 5 saniye sonra tekrar deneniyor...');
         setTimeout(startWhatsapp, 5000);
     }
 }
