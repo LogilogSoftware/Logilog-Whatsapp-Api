@@ -113,7 +113,7 @@ async function startWhatsapp() {
         sock = makeWASocket({
             auth: state,
             version: version,
-            browser: Browsers.macOS('Desktop'),
+            browser: Browsers.ubuntu('Chrome'),
             logger: pino({ level: 'silent' }), // Baileys'in detaylı içsel oturum ve hata loglarını sessize alıyoruz
             qrTimeout: 60000, // QR süresini 60 sn tutuyoruz
             keepAliveIntervalMs: 30000, // Sunucu ile bağlantıyı canlı tutmak için her 30 sn'de bir ping atar
