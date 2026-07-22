@@ -381,7 +381,18 @@ app.get('/send-test', async (req, res) => {
         } else if (cleanPhone.length === 11 && cleanPhone.startsWith('05')) {
             cleanPhone = '90' + cleanPhone.substring(1);
         }
-        const chatId = `${cleanPhone}@s.whatsapp.net`;
+
+        console.log(`[API-TEST] Numarayı WhatsApp üzerinde sorguluyoruz: ${cleanPhone}`);
+        const [resolved] = await sock.onWhatsApp(cleanPhone);
+        console.log(`[API-TEST] Sorgu sonucu:`, resolved);
+
+        if (!resolved || !resolved.exists) {
+            console.warn(`[API-TEST] Numara WhatsApp'ta kayıtlı görünmüyor! Hedef: ${cleanPhone}`);
+            return res.status(400).send(`Numara WhatsApp'ta kayıtlı görünmüyor! Hedef: ${cleanPhone}`);
+        }
+
+        const chatId = resolved.jid;
+        console.log(`[API-TEST] Mesaj gönderilecek JID: ${chatId}`);
 
         let sentMsg;
         if (mediaUrl) {
@@ -428,8 +439,17 @@ app.post('/send-message', authenticateApiKey, async (req, res) => {
             cleanPhone = '90' + cleanPhone.substring(1);
         }
 
-        // Baileys formatında chatId: 905xxxxxxxxx@s.whatsapp.net
-        const chatId = `${cleanPhone}@s.whatsapp.net`;
+        console.log(`[API] Numarayı WhatsApp üzerinde sorguluyoruz: ${cleanPhone}`);
+        const [resolved] = await sock.onWhatsApp(cleanPhone);
+        console.log(`[API] Sorgu sonucu:`, resolved);
+
+        if (!resolved || !resolved.exists) {
+            console.warn(`[API] Numara WhatsApp'ta kayıtlı değil: ${cleanPhone}`);
+            return res.status(400).json({ success: false, error: `Phone number is not registered on WhatsApp: ${cleanPhone}` });
+        }
+
+        const chatId = resolved.jid;
+        console.log(`[API] Mesaj gönderilecek JID: ${chatId}`);
 
         // Mesajı gönder
         let sentMsg;
