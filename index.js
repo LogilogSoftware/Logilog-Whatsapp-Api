@@ -1,4 +1,28 @@
 require('dotenv').config();
+const logBuffer = [];
+const originalLog = console.log;
+const originalError = console.error;
+const originalWarn = console.warn;
+const util = require('util');
+
+console.log = (...args) => {
+    logBuffer.push(`[LOG] ${new Date().toISOString()} - ${args.map(a => typeof a === 'string' ? a : util.inspect(a, { depth: 2 })).join(' ')}`);
+    if (logBuffer.length > 200) logBuffer.shift();
+    originalLog(...args);
+};
+
+console.error = (...args) => {
+    logBuffer.push(`[ERROR] ${new Date().toISOString()} - ${args.map(a => typeof a === 'string' ? a : util.inspect(a, { depth: 2 })).join(' ')}`);
+    if (logBuffer.length > 200) logBuffer.shift();
+    originalError(...args);
+};
+
+console.warn = (...args) => {
+    logBuffer.push(`[WARN] ${new Date().toISOString()} - ${args.map(a => typeof a === 'string' ? a : util.inspect(a, { depth: 2 })).join(' ')}`);
+    if (logBuffer.length > 200) logBuffer.shift();
+    originalWarn(...args);
+};
+
 const express = require('express');
 const cors = require('cors');
 const qrcode = require('qrcode');
@@ -344,6 +368,44 @@ app.get('/reset', (req, res) => {
                     <h1>Oturum Sıfırlanıyor...</h1>
                     <p>Eski oturum verileri temizleniyor ve yeni QR kodu oluşturuluyor.</p>
                     <p>Lütfen bekleyin, 4 saniye içinde QR kod sayfasına yönlendiriliyorsunuz...</p>
+                </div>
+            </body>
+        </html>
+    `);
+});
+
+/**
+ * @api {get} /logs Sunucu Günlüklerini (Logları) Görüntüleme Uç Noktası
+ */
+app.get('/logs', (req, res) => {
+    const key = req.query.key;
+    if (key !== apiKey) {
+        return res.status(401).send('Geçersiz API Anahtarı. Örn: /logs?key=SECRET');
+    }
+    res.send(`
+        <html>
+            <head>
+                <title>WhatsApp API - Server Logs</title>
+                <style>
+                    body { font-family: monospace; background-color: #1e1e1e; color: #d4d4d4; padding: 20px; line-height: 1.4; }
+                    .log { white-space: pre-wrap; word-break: break-all; margin-bottom: 8px; border-bottom: 1px solid #333; padding-bottom: 8px; }
+                    .log-error { color: #f44336; font-weight: bold; }
+                    .log-warn { color: #ffeb3b; }
+                    h1 { color: #25D366; }
+                </style>
+                <script>
+                    setTimeout(() => { window.location.reload(); }, 3000);
+                </script>
+            </head>
+            <body>
+                <h1>Sunucu Logları (Her 3 saniyede yenilenir)</h1>
+                <div>
+                    ${logBuffer.map(log => {
+                        let cls = 'log';
+                        if (log.startsWith('[ERROR]')) cls = 'log log-error';
+                        else if (log.startsWith('[WARN]')) cls = 'log log-warn';
+                        return `<div class="${cls}">${log.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>`;
+                    }).reverse().join('')}
                 </div>
             </body>
         </html>
