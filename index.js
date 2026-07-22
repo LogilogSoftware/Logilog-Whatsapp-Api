@@ -351,11 +351,63 @@ app.get('/reset', (req, res) => {
 });
 
 /**
+ * @api {get} /send-test Kolay Test Gönderim Uç Noktası
+ */
+app.get('/send-test', async (req, res) => {
+    const { phone, message, mediaUrl, key } = req.query;
+
+    const maskedExpected = apiKey ? (apiKey.length > 4 ? apiKey.substring(0, 3) + '...' : '***') : 'YOK';
+    const maskedReceived = key ? (key.length > 4 ? key.substring(0, 3) + '...' : '***') : 'YOK';
+
+    console.log(`[API-TEST] Test isteği alındı. Gelen Key: ${maskedReceived}, Hedef: ${phone}, Media: ${mediaUrl || 'YOK'}`);
+
+    if (key !== apiKey) {
+        console.warn(`[API-TEST] Yetkisiz test erişimi! Beklenen: ${maskedExpected}, Gelen: ${maskedReceived}`);
+        return res.status(401).send('Geçersiz API Anahtarı. Örn: /send-test?key=SECRET&phone=905xxxxxxxxx&message=Test');
+    }
+
+    if (!phone || !message) {
+        return res.status(400).send('Telefon (phone) ve Mesaj (message) parametreleri zorunludur.');
+    }
+
+    if (clientStatus !== 'READY' || !sock) {
+        return res.status(503).send('WhatsApp hazır değil. Durum: ' + clientStatus);
+    }
+
+    try {
+        let cleanPhone = phone.toString().replace(/\D/g, '');
+        if (cleanPhone.length === 10 && cleanPhone.startsWith('5')) {
+            cleanPhone = '90' + cleanPhone;
+        } else if (cleanPhone.length === 11 && cleanPhone.startsWith('05')) {
+            cleanPhone = '90' + cleanPhone.substring(1);
+        }
+        const chatId = `${cleanPhone}@s.whatsapp.net`;
+
+        let sentMsg;
+        if (mediaUrl) {
+            sentMsg = await sock.sendMessage(chatId, {
+                image: { url: mediaUrl },
+                caption: message,
+                jpegThumbnail: STEEL_LOGO_THUMBNAIL
+            });
+        } else {
+            sentMsg = await sock.sendMessage(chatId, { text: message });
+        }
+
+        console.log(`[API-TEST] Test mesajı başarıyla gönderildi. ID: ${sentMsg.key.id}`);
+        res.send(`Mesaj başarıyla gönderildi! ID: ${sentMsg.key.id}`);
+    } catch (e) {
+        console.error('[API-TEST] Test mesajı gönderilirken hata:', e.message);
+        res.status(500).send('Hata oluştu: ' + e.message);
+    }
+});
+
+/**
  * @api {post} /send-message Sürücülere Görev Bildirimi Gönderme API'si
  */
 app.post('/send-message', authenticateApiKey, async (req, res) => {
     let { phone, message, mediaUrl } = req.body;
-    console.log(`[API] Mesaj gönderme isteği alındı. Hedef: ${phone}, Mesaj Boyutu: ${message ? message.length : 0} karakter, Media: ${mediaUrl ? 'VAR' : 'YOK'}`);
+    console.log(`[API] Mesaj gönderme isteği alındı. Hedef: ${phone}, Mesaj Boyutu: ${message ? message.length : 0} karakter, Media URL: ${mediaUrl || 'YOK'}`);
 
     if (!phone || !message) {
         console.warn('[API] Eksik parametre: Telefon veya mesaj boş.');
