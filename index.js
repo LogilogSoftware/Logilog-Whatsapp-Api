@@ -108,6 +108,10 @@ async function startWhatsapp() {
             authStrategy: new LocalAuth({
                 dataPath: AUTH_DIR // Railway Volume ile uyumluluk için
             }),
+            webVersionCache: {
+                type: 'remote',
+                remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2412.54.html'
+            },
             puppeteer: {
                 headless: true,
                 executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
@@ -415,42 +419,30 @@ app.get('/send-test', async (req, res) => {
             cleanPhone = '90' + cleanPhone.substring(1);
         }
 
-        const chatId = `${cleanPhone}@c.us`;
-        console.log(`[API-TEST] Numara kaydı sorgulanıyor: ${chatId}`);
-        
-        const isRegistered = await client.isRegisteredUser(chatId);
-        if (!isRegistered) {
+        console.log(`[API-TEST] Numara WhatsApp üzerinde sorgulanıyor: ${cleanPhone}`);
+        const numberDetails = await client.getNumberId(cleanPhone);
+
+        if (!numberDetails) {
             console.warn(`[API-TEST] Numara WhatsApp'ta kayıtlı görünmüyor! Hedef: ${cleanPhone}`);
             return res.status(400).send(`Numara WhatsApp'ta kayıtlı görünmüyor! Hedef: ${cleanPhone}`);
         }
 
+        const targetJid = numberDetails._serialized;
+        console.log(`[API-TEST] Doğrulanmış JID adresi üzerinden gönderiliyor: ${targetJid}`);
+
         let sentMsg;
-        try {
-            console.log(`[API-TEST] Numaraya ait Contact nesnesi alınıyor: ${chatId}`);
-            const contact = await client.getContactById(chatId);
-            console.log(`[API-TEST] Contact üzerinden Chat nesnesi alınıyor/oluşturuluyor...`);
-            const chat = await contact.getChat();
-            if (mediaUrl) {
-                const media = await MessageMedia.fromUrl(mediaUrl);
-                sentMsg = await chat.sendMessage(media, { caption: message });
-            } else {
-                sentMsg = await chat.sendMessage(message);
-            }
-        } catch (chatError) {
-            console.warn(`[API-TEST] Contact/Chat akışında hata oluştu, doğrudan gönderiliyor:`, chatError.message);
-            if (mediaUrl) {
-                const media = await MessageMedia.fromUrl(mediaUrl);
-                sentMsg = await client.sendMessage(chatId, media, { caption: message });
-            } else {
-                sentMsg = await client.sendMessage(chatId, message);
-            }
+        if (mediaUrl) {
+            const media = await MessageMedia.fromUrl(mediaUrl);
+            sentMsg = await client.sendMessage(targetJid, media, { caption: message });
+        } else {
+            sentMsg = await client.sendMessage(targetJid, message);
         }
 
         const messageId = sentMsg?.id?.id || sentMsg?.id?._serialized || 'Bilinmiyor';
         console.log(`[API-TEST] Test mesajı başarıyla gönderildi. ID: ${messageId}`);
         res.send(`Mesaj başarıyla gönderildi! ID: ${messageId}`);
     } catch (e) {
-        console.error('[API-TEST] Test mesajı gönderilirken hata:', e.message);
+        console.error('[API-TEST] Test mesajı gönderilirken hata:', e);
         res.status(500).send('Hata oluştu: ' + e.message);
     }
 });
@@ -481,45 +473,32 @@ app.post('/send-message', authenticateApiKey, async (req, res) => {
             cleanPhone = '90' + cleanPhone.substring(1);
         }
 
-        const chatId = `${cleanPhone}@c.us`;
-        console.log(`[API] Numara kaydı sorgulanıyor: ${chatId}`);
+        console.log(`[API] Numara WhatsApp üzerinde sorgulanıyor: ${cleanPhone}`);
+        const numberDetails = await client.getNumberId(cleanPhone);
 
-        const isRegistered = await client.isRegisteredUser(chatId);
-        if (!isRegistered) {
+        if (!numberDetails) {
             console.warn(`[API] Numara WhatsApp'ta kayıtlı değil: ${cleanPhone}`);
             return res.status(400).json({ success: false, error: `Phone number is not registered on WhatsApp: ${cleanPhone}` });
         }
 
-        // Mesajı gönder
+        const targetJid = numberDetails._serialized;
+        console.log(`[API] Doğrulanmış JID adresi üzerinden gönderiliyor: ${targetJid}`);
+
         let sentMsg;
-        try {
-            console.log(`[API] Numaraya ait Contact nesnesi alınıyor: ${chatId}`);
-            const contact = await client.getContactById(chatId);
-            console.log(`[API] Contact üzerinden Chat nesnesi alınıyor/oluşturuluyor...`);
-            const chat = await contact.getChat();
-            if (mediaUrl) {
-                const media = await MessageMedia.fromUrl(mediaUrl);
-                sentMsg = await chat.sendMessage(media, { caption: message });
-            } else {
-                sentMsg = await chat.sendMessage(message);
-            }
-        } catch (chatError) {
-            console.warn(`[API] Contact/Chat akışında hata oluştu, doğrudan gönderiliyor:`, chatError.message);
-            if (mediaUrl) {
-                const media = await MessageMedia.fromUrl(mediaUrl);
-                sentMsg = await client.sendMessage(chatId, media, { caption: message });
-            } else {
-                sentMsg = await client.sendMessage(chatId, message);
-            }
+        if (mediaUrl) {
+            const media = await MessageMedia.fromUrl(mediaUrl);
+            sentMsg = await client.sendMessage(targetJid, media, { caption: message });
+        } else {
+            sentMsg = await client.sendMessage(targetJid, message);
         }
 
         const messageId = sentMsg?.id?.id || sentMsg?.id?._serialized || 'Bilinmiyor';
-        console.log(`[API] Mesaj başarıyla gönderildi. Mesaj ID: ${messageId}, Alıcı: ${chatId}`);
+        console.log(`[API] Mesaj başarıyla gönderildi. Mesaj ID: ${messageId}, Alıcı: ${targetJid}`);
         res.json({
             success: true,
             message: 'Message sent successfully',
             messageId: messageId,
-            to: chatId
+            to: targetJid
         });
 
     } catch (error) {
