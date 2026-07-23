@@ -102,16 +102,12 @@ async function startWhatsapp() {
         console.log('[WhatsApp] Eski kilit dosyaları temizleniyor...');
         removeChromeLocks();
 
-        console.log('Initializing WhatsApp connection (whatsapp-web.js)...');
+        console.log('Initializing WhatsApp connection (whatsapp-web.js - GitHub Latest)...');
 
         client = new Client({
             authStrategy: new LocalAuth({
                 dataPath: AUTH_DIR // Railway Volume ile uyumluluk için
             }),
-            webVersionCache: {
-                type: 'remote',
-                remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2412.54.html'
-            },
             puppeteer: {
                 headless: true,
                 executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
@@ -430,28 +426,12 @@ app.get('/send-test', async (req, res) => {
         const targetJid = `${cleanPhone}@c.us`;
         console.log(`[API-TEST] Doğrulanmış JID adresi üzerinden gönderiliyor: ${targetJid}`);
 
-        let chat;
-        try {
-            chat = await client.getChatById(targetJid);
-        } catch (e) {
-            console.warn(`[API-TEST] Chat yüklenirken uyarı: ${e.message}`);
-        }
-
         let sentMsg;
-        if (chat) {
-            if (mediaUrl) {
-                const media = await MessageMedia.fromUrl(mediaUrl);
-                sentMsg = await chat.sendMessage(media, { caption: message });
-            } else {
-                sentMsg = await chat.sendMessage(message);
-            }
+        if (mediaUrl) {
+            const media = await MessageMedia.fromUrl(mediaUrl);
+            sentMsg = await client.sendMessage(targetJid, media, { caption: message });
         } else {
-            if (mediaUrl) {
-                const media = await MessageMedia.fromUrl(mediaUrl);
-                sentMsg = await client.sendMessage(targetJid, media, { caption: message });
-            } else {
-                sentMsg = await client.sendMessage(targetJid, message);
-            }
+            sentMsg = await client.sendMessage(targetJid, message);
         }
 
         console.log(`[API-TEST] Gönderim yanıt objesi:`, sentMsg ? { id: sentMsg.id, type: sentMsg.type } : 'UNDEFINED');
@@ -501,28 +481,12 @@ app.post('/send-message', authenticateApiKey, async (req, res) => {
         const targetJid = `${cleanPhone}@c.us`;
         console.log(`[API] Doğrulanmış JID adresi üzerinden gönderiliyor: ${targetJid}`);
 
-        let chat;
-        try {
-            chat = await client.getChatById(targetJid);
-        } catch (e) {
-            console.warn(`[API] Chat yüklenirken uyarı: ${e.message}`);
-        }
-
         let sentMsg;
-        if (chat) {
-            if (mediaUrl) {
-                const media = await MessageMedia.fromUrl(mediaUrl);
-                sentMsg = await chat.sendMessage(media, { caption: message });
-            } else {
-                sentMsg = await chat.sendMessage(message);
-            }
+        if (mediaUrl) {
+            const media = await MessageMedia.fromUrl(mediaUrl);
+            sentMsg = await client.sendMessage(targetJid, media, { caption: message });
         } else {
-            if (mediaUrl) {
-                const media = await MessageMedia.fromUrl(mediaUrl);
-                sentMsg = await client.sendMessage(targetJid, media, { caption: message });
-            } else {
-                sentMsg = await client.sendMessage(targetJid, message);
-            }
+            sentMsg = await client.sendMessage(targetJid, message);
         }
 
         console.log(`[API] Gönderim yanıt objesi:`, sentMsg ? { id: sentMsg.id, type: sentMsg.type } : 'UNDEFINED');
