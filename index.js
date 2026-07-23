@@ -455,8 +455,8 @@ app.get('/send-test', async (req, res) => {
             return res.status(400).send(`Numara WhatsApp'ta kayıtlı görünmüyor! Hedef: ${cleanPhone}`);
         }
 
-        // Yeni Multi-Device mimarisinde LID kullanmak gerekiyor, yoksa JID ile devam et
-        const chatId = resolved.lid || resolved.jid;
+        // JID doğrulama sorgusu ile elde edilen gerçek JID adresi üzerinden mesajı gönderelim
+        const chatId = resolved.jid;
         console.log(`[API-TEST] Kullanılan JID tipi: ${resolved.lid ? 'LID' : 'JID'}, Değer: ${chatId}`);
 
         let sentMsg;
@@ -513,9 +513,9 @@ app.post('/send-message', authenticateApiKey, async (req, res) => {
             return res.status(400).json({ success: false, error: `Phone number is not registered on WhatsApp: ${cleanPhone}` });
         }
 
-        // Yeni Multi-Device mimarisinde LID kullanmak gerekiyor, yoksa JID ile devam et
-        const chatId = resolved.lid || resolved.jid;
-        console.log(`[API] Kullanılan JID tipi: ${resolved.lid ? 'LID' : 'JID'}, Değer: ${chatId}`);
+        // JID doğrulama sorgusu ile elde edilen gerçek JID adresi üzerinden mesajı gönderelim
+        const chatId = resolved.jid;
+        console.log(`[API] Kullanılan JID: ${chatId}`);
 
         // Mesajı gönder
         let sentMsg;
