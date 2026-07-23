@@ -406,8 +406,9 @@ app.get('/send-test', async (req, res) => {
             sentMsg = await client.sendMessage(chatId, message);
         }
 
-        console.log(`[API-TEST] Test mesajı başarıyla gönderildi. ID: ${sentMsg.id.id}`);
-        res.send(`Mesaj başarıyla gönderildi! ID: ${sentMsg.id.id}`);
+        const messageId = sentMsg?.id?.id || sentMsg?.id?._serialized || 'Bilinmiyor';
+        console.log(`[API-TEST] Test mesajı başarıyla gönderildi. ID: ${messageId}`);
+        res.send(`Mesaj başarıyla gönderildi! ID: ${messageId}`);
     } catch (e) {
         console.error('[API-TEST] Test mesajı gönderilirken hata:', e.message);
         res.status(500).send('Hata oluştu: ' + e.message);
@@ -458,11 +459,12 @@ app.post('/send-message', authenticateApiKey, async (req, res) => {
             sentMsg = await client.sendMessage(chatId, message);
         }
 
-        console.log(`[API] Mesaj başarıyla gönderildi. Mesaj ID: ${sentMsg.id.id}, Alıcı: ${chatId}`);
+        const messageId = sentMsg?.id?.id || sentMsg?.id?._serialized || 'Bilinmiyor';
+        console.log(`[API] Mesaj başarıyla gönderildi. Mesaj ID: ${messageId}, Alıcı: ${chatId}`);
         res.json({
             success: true,
             message: 'Message sent successfully',
-            messageId: sentMsg.id.id,
+            messageId: messageId,
             to: chatId
         });
 
