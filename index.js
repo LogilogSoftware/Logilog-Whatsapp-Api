@@ -427,7 +427,7 @@ app.get('/send-test', async (req, res) => {
             return res.status(400).send(`Numara WhatsApp'ta kayıtlı görünmüyor! Hedef: ${cleanPhone}`);
         }
 
-        const targetJid = numberDetails._serialized;
+        const targetJid = `${cleanPhone}@c.us`;
         console.log(`[API-TEST] Doğrulanmış JID adresi üzerinden gönderiliyor: ${targetJid}`);
 
         let sentMsg;
@@ -481,7 +481,7 @@ app.post('/send-message', authenticateApiKey, async (req, res) => {
             return res.status(400).json({ success: false, error: `Phone number is not registered on WhatsApp: ${cleanPhone}` });
         }
 
-        const targetJid = numberDetails._serialized;
+        const targetJid = `${cleanPhone}@c.us`;
         console.log(`[API] Doğrulanmış JID adresi üzerinden gönderiliyor: ${targetJid}`);
 
         let sentMsg;
