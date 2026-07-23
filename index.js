@@ -425,11 +425,23 @@ app.get('/send-test', async (req, res) => {
         }
 
         let sentMsg;
-        if (mediaUrl) {
-            const media = await MessageMedia.fromUrl(mediaUrl);
-            sentMsg = await client.sendMessage(chatId, media, { caption: message });
-        } else {
-            sentMsg = await client.sendMessage(chatId, message);
+        try {
+            console.log(`[API-TEST] Sohbet nesnesi alınıyor: ${chatId}`);
+            const chat = await client.getChatById(chatId);
+            if (mediaUrl) {
+                const media = await MessageMedia.fromUrl(mediaUrl);
+                sentMsg = await chat.sendMessage(media, { caption: message });
+            } else {
+                sentMsg = await chat.sendMessage(message);
+            }
+        } catch (chatError) {
+            console.warn(`[API-TEST] Chat nesnesi alınırken hata oluştu veya doğrudan gönderiliyor:`, chatError.message);
+            if (mediaUrl) {
+                const media = await MessageMedia.fromUrl(mediaUrl);
+                sentMsg = await client.sendMessage(chatId, media, { caption: message });
+            } else {
+                sentMsg = await client.sendMessage(chatId, message);
+            }
         }
 
         const messageId = sentMsg?.id?.id || sentMsg?.id?._serialized || 'Bilinmiyor';
@@ -478,11 +490,23 @@ app.post('/send-message', authenticateApiKey, async (req, res) => {
 
         // Mesajı gönder
         let sentMsg;
-        if (mediaUrl) {
-            const media = await MessageMedia.fromUrl(mediaUrl);
-            sentMsg = await client.sendMessage(chatId, media, { caption: message });
-        } else {
-            sentMsg = await client.sendMessage(chatId, message);
+        try {
+            console.log(`[API] Sohbet nesnesi alınıyor: ${chatId}`);
+            const chat = await client.getChatById(chatId);
+            if (mediaUrl) {
+                const media = await MessageMedia.fromUrl(mediaUrl);
+                sentMsg = await chat.sendMessage(media, { caption: message });
+            } else {
+                sentMsg = await chat.sendMessage(message);
+            }
+        } catch (chatError) {
+            console.warn(`[API] Chat nesnesi alınırken hata oluştu veya doğrudan gönderiliyor:`, chatError.message);
+            if (mediaUrl) {
+                const media = await MessageMedia.fromUrl(mediaUrl);
+                sentMsg = await client.sendMessage(chatId, media, { caption: message });
+            } else {
+                sentMsg = await client.sendMessage(chatId, message);
+            }
         }
 
         const messageId = sentMsg?.id?.id || sentMsg?.id?._serialized || 'Bilinmiyor';
