@@ -53,6 +53,29 @@ function clearAuthFolder() {
     }
 }
 
+function removeChromeLocks() {
+    try {
+        const lockPaths = [
+            path.join(AUTH_DIR, 'session', 'SingletonLock'),
+            path.join(AUTH_DIR, 'session', 'Default', 'SingletonLock'),
+            path.join(AUTH_DIR, 'SingletonLock')
+        ];
+        
+        for (const lockPath of lockPaths) {
+            try {
+                if (fs.existsSync(lockPath) || fs.lstatSync(lockPath).isSymbolicLink()) {
+                    fs.unlinkSync(lockPath);
+                    console.log(`[WhatsApp] Eski kilit dosyası silindi: ${lockPath}`);
+                }
+            } catch (err) {
+                // Yoksay
+            }
+        }
+    } catch (e) {
+        console.error('[WhatsApp] Kilit dosyaları temizlenirken hata:', e.message);
+    }
+}
+
 const app = express();
 const port = process.env.PORT || 3000;
 const apiKey = process.env.API_KEY || 'logilog-secret-key';
@@ -76,6 +99,9 @@ async function startWhatsapp() {
     clientStatus = 'CONNECTING';
 
     try {
+        console.log('[WhatsApp] Eski kilit dosyaları temizleniyor...');
+        removeChromeLocks();
+
         console.log('Initializing WhatsApp connection (whatsapp-web.js)...');
 
         client = new Client({
