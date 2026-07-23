@@ -78,7 +78,7 @@ async function startWhatsapp() {
     clientStatus = 'CONNECTING';
 
     try {
-        console.log('Initializing WhatsApp connection (Baileys)...');
+        console.log('Initializing WhatsApp connection (Baileys High Performance)...');
         
         if (sock) {
             try {
@@ -104,13 +104,14 @@ async function startWhatsapp() {
         sock = makeWASocket({
             auth: state,
             version: version,
-            browser: Browsers.ubuntu('Chrome'),
+            browser: Browsers.macOS('Desktop'), // WhatsApp'ın şüpheli cihaz algılamaması için resmi macOS Desktop imzası
             logger: pino({ level: 'silent' }),
             qrTimeout: 60000,
             keepAliveIntervalMs: 30000,
             markOnlineOnConnect: true,
             connectTimeoutMs: 60000,
-            syncFullHistory: false
+            syncFullHistory: false,
+            fireInitQueries: true
         });
 
         sock.ev.on('creds.update', saveCreds);
