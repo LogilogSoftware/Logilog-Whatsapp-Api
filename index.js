@@ -426,6 +426,21 @@ app.get('/send-test', async (req, res) => {
         const targetJid = `${cleanPhone}@c.us`;
         console.log(`[API-TEST] Doğrulanmış JID adresi üzerinden gönderiliyor: ${targetJid}`);
 
+        // Sohbeti Store belleğinde zorla aratıp önbelleğe alıyoruz
+        try {
+            await client.pupPage.evaluate(async (jid) => {
+                if (window.Store && window.Store.Chat) {
+                    const existing = window.Store.Chat.get(jid);
+                    if (!existing) {
+                        await window.Store.Chat.find(jid);
+                    }
+                }
+            }, targetJid);
+            await new Promise(r => setTimeout(r, 500));
+        } catch (e) {
+            console.warn('[API-TEST] Store.Chat.find uyarısı:', e.message);
+        }
+
         let sentMsg;
         if (mediaUrl) {
             const media = await MessageMedia.fromUrl(mediaUrl);
@@ -480,6 +495,21 @@ app.post('/send-message', authenticateApiKey, async (req, res) => {
 
         const targetJid = `${cleanPhone}@c.us`;
         console.log(`[API] Doğrulanmış JID adresi üzerinden gönderiliyor: ${targetJid}`);
+
+        // Sohbeti Store belleğinde zorla aratıp önbelleğe alıyoruz
+        try {
+            await client.pupPage.evaluate(async (jid) => {
+                if (window.Store && window.Store.Chat) {
+                    const existing = window.Store.Chat.get(jid);
+                    if (!existing) {
+                        await window.Store.Chat.find(jid);
+                    }
+                }
+            }, targetJid);
+            await new Promise(r => setTimeout(r, 500));
+        } catch (e) {
+            console.warn('[API] Store.Chat.find uyarısı:', e.message);
+        }
 
         let sentMsg;
         if (mediaUrl) {
