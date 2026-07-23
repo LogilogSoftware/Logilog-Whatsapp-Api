@@ -430,17 +430,34 @@ app.get('/send-test', async (req, res) => {
         const targetJid = `${cleanPhone}@c.us`;
         console.log(`[API-TEST] Doğrulanmış JID adresi üzerinden gönderiliyor: ${targetJid}`);
 
-        let sentMsg;
-        if (mediaUrl) {
-            const media = await MessageMedia.fromUrl(mediaUrl);
-            sentMsg = await client.sendMessage(targetJid, media, { caption: message });
-        } else {
-            sentMsg = await client.sendMessage(targetJid, message);
+        let chat;
+        try {
+            chat = await client.getChatById(targetJid);
+        } catch (e) {
+            console.warn(`[API-TEST] Chat yüklenirken uyarı: ${e.message}`);
         }
 
+        let sentMsg;
+        if (chat) {
+            if (mediaUrl) {
+                const media = await MessageMedia.fromUrl(mediaUrl);
+                sentMsg = await chat.sendMessage(media, { caption: message });
+            } else {
+                sentMsg = await chat.sendMessage(message);
+            }
+        } else {
+            if (mediaUrl) {
+                const media = await MessageMedia.fromUrl(mediaUrl);
+                sentMsg = await client.sendMessage(targetJid, media, { caption: message });
+            } else {
+                sentMsg = await client.sendMessage(targetJid, message);
+            }
+        }
+
+        console.log(`[API-TEST] Gönderim yanıt objesi:`, sentMsg ? { id: sentMsg.id, type: sentMsg.type } : 'UNDEFINED');
         const messageId = sentMsg?.id?.id || sentMsg?.id?._serialized || 'Bilinmiyor';
-        console.log(`[API-TEST] Test mesajı başarıyla gönderildi. ID: ${messageId}`);
-        res.send(`Mesaj başarıyla gönderildi! ID: ${messageId}`);
+        console.log(`[API-TEST] Test mesajı gönderim sonucu. ID: ${messageId}`);
+        res.send(`Mesaj gönderim sonucu: ID: ${messageId}`);
     } catch (e) {
         console.error('[API-TEST] Test mesajı gönderilirken hata:', e);
         res.status(500).send('Hata oluştu: ' + e.message);
@@ -484,16 +501,33 @@ app.post('/send-message', authenticateApiKey, async (req, res) => {
         const targetJid = `${cleanPhone}@c.us`;
         console.log(`[API] Doğrulanmış JID adresi üzerinden gönderiliyor: ${targetJid}`);
 
-        let sentMsg;
-        if (mediaUrl) {
-            const media = await MessageMedia.fromUrl(mediaUrl);
-            sentMsg = await client.sendMessage(targetJid, media, { caption: message });
-        } else {
-            sentMsg = await client.sendMessage(targetJid, message);
+        let chat;
+        try {
+            chat = await client.getChatById(targetJid);
+        } catch (e) {
+            console.warn(`[API] Chat yüklenirken uyarı: ${e.message}`);
         }
 
+        let sentMsg;
+        if (chat) {
+            if (mediaUrl) {
+                const media = await MessageMedia.fromUrl(mediaUrl);
+                sentMsg = await chat.sendMessage(media, { caption: message });
+            } else {
+                sentMsg = await chat.sendMessage(message);
+            }
+        } else {
+            if (mediaUrl) {
+                const media = await MessageMedia.fromUrl(mediaUrl);
+                sentMsg = await client.sendMessage(targetJid, media, { caption: message });
+            } else {
+                sentMsg = await client.sendMessage(targetJid, message);
+            }
+        }
+
+        console.log(`[API] Gönderim yanıt objesi:`, sentMsg ? { id: sentMsg.id, type: sentMsg.type } : 'UNDEFINED');
         const messageId = sentMsg?.id?.id || sentMsg?.id?._serialized || 'Bilinmiyor';
-        console.log(`[API] Mesaj başarıyla gönderildi. Mesaj ID: ${messageId}, Alıcı: ${targetJid}`);
+        console.log(`[API] Mesaj gönderim sonucu. Mesaj ID: ${messageId}, Alıcı: ${targetJid}`);
         res.json({
             success: true,
             message: 'Message sent successfully',
