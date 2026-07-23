@@ -26,10 +26,12 @@ console.warn = (...args) => {
 const express = require('express');
 const cors = require('cors');
 const qrcode = require('qrcode');
-const qrcodeTerminal = require('qrcode-terminal');
+const pino = require('pino');
 const fs = require('fs');
 const path = require('path');
-const { Client, LocalAuth, MessageMedia } = require('whatsapp-web.js');
+const { useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion, Browsers } = require('@whiskeysockets/baileys');
+const makeWASocket = require('@whiskeysockets/baileys').default || require('@whiskeysockets/baileys');
+const { Boom } = require('@hapi/boom');
 
 const AUTH_DIR = process.env.AUTH_DIR || './.baileys_auth';
 
@@ -53,29 +55,6 @@ function clearAuthFolder() {
     }
 }
 
-function removeChromeLocks() {
-    try {
-        const lockPaths = [
-            path.join(AUTH_DIR, 'session', 'SingletonLock'),
-            path.join(AUTH_DIR, 'session', 'Default', 'SingletonLock'),
-            path.join(AUTH_DIR, 'SingletonLock')
-        ];
-        
-        for (const lockPath of lockPaths) {
-            try {
-                if (fs.existsSync(lockPath) || fs.lstatSync(lockPath).isSymbolicLink()) {
-                    fs.unlinkSync(lockPath);
-                    console.log(`[WhatsApp] Eski kilit dosyası silindi: ${lockPath}`);
-                }
-            } catch (err) {
-                // Yoksay
-            }
-        }
-    } catch (e) {
-        console.error('[WhatsApp] Kilit dosyaları temizlenirken hata:', e.message);
-    }
-}
-
 const app = express();
 const port = process.env.PORT || 3000;
 const apiKey = process.env.API_KEY || 'logilog-secret-key';
@@ -87,7 +66,7 @@ app.use(express.urlencoded({ extended: true }));
 // Global durum değişkenleri
 let qrCodeImage = null;
 let clientStatus = 'INITIALIZING'; // INITIALIZING, QR_READY, CONNECTING, READY, DISCONNECTED
-let client = null;
+let sock = null;
 let isInitializing = false;
 
 async function startWhatsapp() {
@@ -99,68 +78,98 @@ async function startWhatsapp() {
     clientStatus = 'CONNECTING';
 
     try {
-        console.log('[WhatsApp] Eski kilit dosyaları temizleniyor...');
-        removeChromeLocks();
-
-        console.log('Initializing WhatsApp connection (whatsapp-web.js - GitHub Latest)...');
-
-        client = new Client({
-            authStrategy: new LocalAuth({
-                dataPath: AUTH_DIR // Railway Volume ile uyumluluk için
-            }),
-            puppeteer: {
-                headless: true,
-                executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
-                args: [
-                    '--no-sandbox',
-                    '--disable-setuid-sandbox',
-                    '--disable-dev-shm-usage',
-                    '--disable-accelerated-2d-canvas',
-                    '--no-first-run',
-                    '--no-zygote',
-                    '--disable-gpu'
-                ]
-            }
-        });
-
-        client.on('qr', async (qr) => {
-            clientStatus = 'QR_READY';
-            console.log('[WhatsApp] Yeni QR kodu alındı, terminalde ve web arayüzünde gösteriliyor.');
-            qrcodeTerminal.generate(qr, { small: true });
+        console.log('Initializing WhatsApp connection (Baileys)...');
+        
+        if (sock) {
             try {
-                qrCodeImage = await qrcode.toDataURL(qr);
-            } catch (err) {
-                console.error('[WhatsApp] QR Kod görseli oluşturulamadı:', err.message);
+                sock.ev.removeAllListeners();
+                sock.ws?.close();
+            } catch (e) {}
+            sock = null;
+        }
+
+        let version = [2, 3000, 1017531287];
+        try {
+            const { version: latestVersion } = await fetchLatestBaileysVersion();
+            if (latestVersion) {
+                version = latestVersion;
+                console.log(`Fetched latest WhatsApp Web version: ${version.join('.')}`);
+            }
+        } catch (e) {
+            console.log('Could not fetch latest version, using fallback version:', version.join('.'));
+        }
+
+        const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
+
+        sock = makeWASocket({
+            auth: state,
+            version: version,
+            browser: Browsers.ubuntu('Chrome'),
+            logger: pino({ level: 'silent' }),
+            qrTimeout: 60000,
+            keepAliveIntervalMs: 30000,
+            markOnlineOnConnect: true,
+            connectTimeoutMs: 60000,
+            syncFullHistory: false
+        });
+
+        sock.ev.on('creds.update', saveCreds);
+
+        sock.ev.on('connection.update', async (update) => {
+            const { connection, lastDisconnect, qr } = update;
+            
+            if (connection) {
+                console.log('[WhatsApp] Bağlantı durumu:', connection);
+            }
+
+            if (qr) {
+                clientStatus = 'QR_READY';
+                console.log('[WhatsApp] Yeni QR kodu oluşturuldu.');
+                try {
+                    qrCodeImage = await qrcode.toDataURL(qr);
+                } catch (err) {
+                    console.error('[WhatsApp] QR Kod görseli oluşturulamadı:', err.message);
+                }
+            }
+
+            if (connection === 'close') {
+                isInitializing = false;
+                clientStatus = 'DISCONNECTED';
+                const errorReason = lastDisconnect?.error;
+                const statusCode = errorReason instanceof Boom ? errorReason.output?.statusCode : null;
+                const errMessage = errorReason?.message || 'Bilinmeyen Neden';
+                
+                console.log(`[WhatsApp] Bağlantı kapandı. Neden: ${errMessage} (Durum Kodu: ${statusCode || 'N/A'})`);
+
+                const isLoggedOut = statusCode === DisconnectReason.loggedOut || statusCode === 401;
+                const isBadSession = statusCode === DisconnectReason.badSession || statusCode === 400;
+
+                if (isLoggedOut || isBadSession) {
+                    console.log(`[WhatsApp] Oturum kapatıldı veya geçersiz. Oturum klasörü temizlenip yeniden başlatılıyor...`);
+                    qrCodeImage = null;
+                    if (sock) {
+                        try {
+                            sock.ev.removeAllListeners();
+                            sock.ws?.close();
+                        } catch (e) {}
+                        sock = null;
+                    }
+                    setTimeout(() => {
+                        clearAuthFolder();
+                        setTimeout(startWhatsapp, 1500);
+                    }, 1500);
+                } else {
+                    console.log('[WhatsApp] 3 saniye içinde yeniden bağlanılacak...');
+                    setTimeout(startWhatsapp, 3000);
+                }
+            } else if (connection === 'open') {
+                isInitializing = false;
+                clientStatus = 'READY';
+                qrCodeImage = null;
+                const userPhone = sock.user?.id ? sock.user.id.split(':')[0] : 'Bilinmiyor';
+                console.log(`[WhatsApp] WhatsApp İstemcisi HAZIR (Baileys)! Bağlı Hesap: ${userPhone}`);
             }
         });
-
-        client.on('ready', () => {
-            isInitializing = false;
-            clientStatus = 'READY';
-            qrCodeImage = null;
-            const userPhone = client.info?.wid?.user || 'Bilinmiyor';
-            console.log(`[WhatsApp] WhatsApp İstemcisi HAZIR (whatsapp-web.js)! Bağlı Hesap: ${userPhone}`);
-        });
-
-        client.on('auth_failure', (msg) => {
-            isInitializing = false;
-            clientStatus = 'DISCONNECTED';
-            qrCodeImage = null;
-            console.error('[WhatsApp] Kimlik doğrulama başarısız:', msg);
-        });
-
-        client.on('disconnected', (reason) => {
-            isInitializing = false;
-            clientStatus = 'DISCONNECTED';
-            qrCodeImage = null;
-            console.log('[WhatsApp] Bağlantı kapandı. Neden:', reason);
-            
-            // Bağlantı koptuğunda 5 saniye sonra otomatik yeniden başlat
-            setTimeout(startWhatsapp, 5000);
-        });
-
-        await client.initialize();
-
     } catch (err) {
         isInitializing = false;
         console.error('[WhatsApp] BAĞLANTI HATASI:', err.message || err);
@@ -172,7 +181,7 @@ async function startWhatsapp() {
 
 // WhatsApp İstemcisini Başlat
 startWhatsapp().catch(err => {
-    console.error('Error starting WhatsApp client:', err);
+    console.error('Error starting WhatsApp socket:', err);
 });
 
 // --- API Güvenlik Ara Katmanı (Middleware) ---
@@ -196,15 +205,15 @@ const authenticateApiKey = (req, res, next) => {
  */
 app.get('/', (req, res) => {
     res.json({
-        name: 'Logilog WhatsApp API Gateway (whatsapp-web.js)',
+        name: 'Logilog WhatsApp API Gateway (Baileys High Performance)',
         status: clientStatus,
         authenticated: clientStatus === 'READY',
-        connectedNumber: client?.info?.wid?.user || null
+        connectedNumber: sock?.user?.id ? sock.user.id.split(':')[0] : null
     });
 });
 
 /**
- * @api {get} /qr QR Kodunu görsel olarak görüntüler (Tarayıcıdan okutmak için)
+ * @api {get} /qr QR Kodunu görsel olarak görüntüler
  */
 app.get('/qr', (req, res) => {
     if (clientStatus === 'READY') {
@@ -221,7 +230,7 @@ app.get('/qr', (req, res) => {
                 <body>
                     <div class="card">
                         <h1>WhatsApp Bağlantısı Aktif!</h1>
-                        <p>Cihazınız başarıyla bağlandı (whatsapp-web.js).</p>
+                        <p>Cihazınız başarıyla bağlandı (Baileys).</p>
                         <p>Durum: <strong>${clientStatus}</strong></p>
                     </div>
                 </body>
@@ -277,7 +286,7 @@ app.get('/qr', (req, res) => {
             </head>
             <body>
                 <div class="card">
-                    <h1>WhatsApp QR Kodu (whatsapp-web.js)</h1>
+                    <h1>WhatsApp QR Kodu (Baileys)</h1>
                     <p>Telefonunuzdan WhatsApp -> Bağlı Cihazlar -> Cihaz Bağla adımlarını takip ederek aşağıdaki kodu taratın.</p>
                     <img src="${qrCodeImage}" alt="WhatsApp QR Code" />
                     <p>Mevcut Durum: <strong>${clientStatus}</strong></p>
@@ -300,20 +309,19 @@ app.get('/status', (req, res) => {
 });
 
 /**
- * @api {get} /reset Oturumu Manuel Sıfırlama ve Yeni QR Oluşturma Uç Noktası
+ * @api {get} /reset Oturumu Manuel Sıfırlama
  */
-app.get('/reset', async (req, res) => {
+app.get('/reset', (req, res) => {
     console.log('[WhatsApp] Manuel sıfırlama isteği alındı. Oturum temizleniyor...');
     clientStatus = 'INITIALIZING';
     qrCodeImage = null;
 
-    if (client) {
+    if (sock) {
         try {
-            await client.destroy();
-        } catch (e) {
-            console.error('[WhatsApp] Client destroy hatası:', e.message);
-        }
-        client = null;
+            sock.ev.removeAllListeners();
+            sock.ws?.close();
+        } catch (e) {}
+        sock = null;
     }
 
     setTimeout(() => {
@@ -346,7 +354,7 @@ app.get('/reset', async (req, res) => {
 });
 
 /**
- * @api {get} /logs Sunucu Günlüklerini (Logları) Görüntüleme Uç Noktası
+ * @api {get} /logs Sunucu Günlüklerini Görüntüleme
  */
 app.get('/logs', (req, res) => {
     const key = req.query.key;
@@ -403,7 +411,7 @@ app.get('/send-test', async (req, res) => {
         return res.status(400).send('Telefon (phone) ve Mesaj (message) parametreleri zorunludur.');
     }
 
-    if (clientStatus !== 'READY' || !client) {
+    if (clientStatus !== 'READY' || !sock) {
         return res.status(503).send('WhatsApp hazır değil. Durum: ' + clientStatus);
     }
 
@@ -415,46 +423,34 @@ app.get('/send-test', async (req, res) => {
             cleanPhone = '90' + cleanPhone.substring(1);
         }
 
-        console.log(`[API-TEST] Numara WhatsApp üzerinde sorgulanıyor: ${cleanPhone}`);
-        const numberDetails = await client.getNumberId(cleanPhone);
+        console.log(`[API-TEST] Numarayı WhatsApp sunucularında sorguluyoruz: ${cleanPhone}`);
+        const [resolved] = await sock.onWhatsApp(cleanPhone);
+        console.log(`[API-TEST] Sorgu sonucu:`, resolved);
 
-        if (!numberDetails) {
+        if (!resolved || !resolved.exists) {
             console.warn(`[API-TEST] Numara WhatsApp'ta kayıtlı görünmüyor! Hedef: ${cleanPhone}`);
             return res.status(400).send(`Numara WhatsApp'ta kayıtlı görünmüyor! Hedef: ${cleanPhone}`);
         }
 
-        const targetJid = `${cleanPhone}@c.us`;
-        console.log(`[API-TEST] Doğrulanmış JID adresi üzerinden gönderiliyor: ${targetJid}`);
-
-        // Sohbeti Store belleğinde zorla aratıp önbelleğe alıyoruz
-        try {
-            await client.pupPage.evaluate(async (jid) => {
-                if (window.Store && window.Store.Chat) {
-                    const existing = window.Store.Chat.get(jid);
-                    if (!existing) {
-                        await window.Store.Chat.find(jid);
-                    }
-                }
-            }, targetJid);
-            await new Promise(r => setTimeout(r, 500));
-        } catch (e) {
-            console.warn('[API-TEST] Store.Chat.find uyarısı:', e.message);
-        }
+        // KESİNLİKLE resolved.jid (@s.whatsapp.net) KULLANIYORUZ! ASLA LID KULLANMIYORUZ!
+        const chatId = resolved.jid || `${cleanPhone}@s.whatsapp.net`;
+        console.log(`[API-TEST] Kullanılan Doğrulanmış JID Adresi: ${chatId}`);
 
         let sentMsg;
         if (mediaUrl) {
-            const media = await MessageMedia.fromUrl(mediaUrl);
-            sentMsg = await client.sendMessage(targetJid, media, { caption: message });
+            sentMsg = await sock.sendMessage(chatId, {
+                image: { url: mediaUrl },
+                caption: message
+            });
         } else {
-            sentMsg = await client.sendMessage(targetJid, message);
+            sentMsg = await sock.sendMessage(chatId, { text: message });
         }
 
-        console.log(`[API-TEST] Gönderim yanıt objesi:`, sentMsg ? { id: sentMsg.id, type: sentMsg.type } : 'UNDEFINED');
-        const messageId = sentMsg?.id?.id || sentMsg?.id?._serialized || 'Bilinmiyor';
-        console.log(`[API-TEST] Test mesajı gönderim sonucu. ID: ${messageId}`);
-        res.send(`Mesaj gönderim sonucu: ID: ${messageId}`);
+        const msgId = sentMsg?.key?.id || 'OK';
+        console.log(`[API-TEST] Test mesajı başarıyla gönderildi. ID: ${msgId}`);
+        res.send(`Mesaj başarıyla gönderildi! ID: ${msgId}`);
     } catch (e) {
-        console.error('[API-TEST] Test mesajı gönderilirken hata:', e);
+        console.error('[API-TEST] Test mesajı gönderilirken hata:', e.message);
         res.status(500).send('Hata oluştu: ' + e.message);
     }
 });
@@ -471,9 +467,9 @@ app.post('/send-message', authenticateApiKey, async (req, res) => {
         return res.status(400).json({ success: false, error: 'Phone and message fields are required' });
     }
 
-    if (clientStatus !== 'READY' || !client) {
+    if (clientStatus !== 'READY' || !sock) {
         console.warn(`[API] Mesaj gönderilemedi. WhatsApp hazır değil. Durum: ${clientStatus}`);
-        return res.status(503).json({ success: false, error: 'WhatsApp client is not ready. Current status: ' + clientStatus });
+        return res.status(503).json({ success: false, error: 'WhatsApp socket is not ready. Current status: ' + clientStatus });
     }
 
     try {
@@ -485,48 +481,36 @@ app.post('/send-message', authenticateApiKey, async (req, res) => {
             cleanPhone = '90' + cleanPhone.substring(1);
         }
 
-        console.log(`[API] Numara WhatsApp üzerinde sorgulanıyor: ${cleanPhone}`);
-        const numberDetails = await client.getNumberId(cleanPhone);
+        console.log(`[API] Numarayı WhatsApp sunucularında sorguluyoruz: ${cleanPhone}`);
+        const [resolved] = await sock.onWhatsApp(cleanPhone);
+        console.log(`[API] Sorgu sonucu:`, resolved);
 
-        if (!numberDetails) {
+        if (!resolved || !resolved.exists) {
             console.warn(`[API] Numara WhatsApp'ta kayıtlı değil: ${cleanPhone}`);
             return res.status(400).json({ success: false, error: `Phone number is not registered on WhatsApp: ${cleanPhone}` });
         }
 
-        const targetJid = `${cleanPhone}@c.us`;
-        console.log(`[API] Doğrulanmış JID adresi üzerinden gönderiliyor: ${targetJid}`);
-
-        // Sohbeti Store belleğinde zorla aratıp önbelleğe alıyoruz
-        try {
-            await client.pupPage.evaluate(async (jid) => {
-                if (window.Store && window.Store.Chat) {
-                    const existing = window.Store.Chat.get(jid);
-                    if (!existing) {
-                        await window.Store.Chat.find(jid);
-                    }
-                }
-            }, targetJid);
-            await new Promise(r => setTimeout(r, 500));
-        } catch (e) {
-            console.warn('[API] Store.Chat.find uyarısı:', e.message);
-        }
+        // KESİNLİKLE resolved.jid (@s.whatsapp.net) KULLANIYORUZ! ASLA LID KULLANMIYORUZ!
+        const chatId = resolved.jid || `${cleanPhone}@s.whatsapp.net`;
+        console.log(`[API] Kullanılan Doğrulanmış JID Adresi: ${chatId}`);
 
         let sentMsg;
         if (mediaUrl) {
-            const media = await MessageMedia.fromUrl(mediaUrl);
-            sentMsg = await client.sendMessage(targetJid, media, { caption: message });
+            sentMsg = await sock.sendMessage(chatId, {
+                image: { url: mediaUrl },
+                caption: message
+            });
         } else {
-            sentMsg = await client.sendMessage(targetJid, message);
+            sentMsg = await sock.sendMessage(chatId, { text: message });
         }
 
-        console.log(`[API] Gönderim yanıt objesi:`, sentMsg ? { id: sentMsg.id, type: sentMsg.type } : 'UNDEFINED');
-        const messageId = sentMsg?.id?.id || sentMsg?.id?._serialized || 'Bilinmiyor';
-        console.log(`[API] Mesaj gönderim sonucu. Mesaj ID: ${messageId}, Alıcı: ${targetJid}`);
+        const msgId = sentMsg?.key?.id || 'OK';
+        console.log(`[API] Mesaj başarıyla gönderildi. Mesaj ID: ${msgId}, Alıcı: ${chatId}`);
         res.json({
             success: true,
             message: 'Message sent successfully',
-            messageId: messageId,
-            to: targetJid
+            messageId: msgId,
+            to: chatId
         });
 
     } catch (error) {
