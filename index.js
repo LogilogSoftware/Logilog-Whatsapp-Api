@@ -426,8 +426,10 @@ app.get('/send-test', async (req, res) => {
 
         let sentMsg;
         try {
-            console.log(`[API-TEST] Sohbet nesnesi alınıyor: ${chatId}`);
-            const chat = await client.getChatById(chatId);
+            console.log(`[API-TEST] Numaraya ait Contact nesnesi alınıyor: ${chatId}`);
+            const contact = await client.getContactById(chatId);
+            console.log(`[API-TEST] Contact üzerinden Chat nesnesi alınıyor/oluşturuluyor...`);
+            const chat = await contact.getChat();
             if (mediaUrl) {
                 const media = await MessageMedia.fromUrl(mediaUrl);
                 sentMsg = await chat.sendMessage(media, { caption: message });
@@ -435,7 +437,7 @@ app.get('/send-test', async (req, res) => {
                 sentMsg = await chat.sendMessage(message);
             }
         } catch (chatError) {
-            console.warn(`[API-TEST] Chat nesnesi alınırken hata oluştu veya doğrudan gönderiliyor:`, chatError.message);
+            console.warn(`[API-TEST] Contact/Chat akışında hata oluştu, doğrudan gönderiliyor:`, chatError.message);
             if (mediaUrl) {
                 const media = await MessageMedia.fromUrl(mediaUrl);
                 sentMsg = await client.sendMessage(chatId, media, { caption: message });
@@ -491,8 +493,10 @@ app.post('/send-message', authenticateApiKey, async (req, res) => {
         // Mesajı gönder
         let sentMsg;
         try {
-            console.log(`[API] Sohbet nesnesi alınıyor: ${chatId}`);
-            const chat = await client.getChatById(chatId);
+            console.log(`[API] Numaraya ait Contact nesnesi alınıyor: ${chatId}`);
+            const contact = await client.getContactById(chatId);
+            console.log(`[API] Contact üzerinden Chat nesnesi alınıyor/oluşturuluyor...`);
+            const chat = await contact.getChat();
             if (mediaUrl) {
                 const media = await MessageMedia.fromUrl(mediaUrl);
                 sentMsg = await chat.sendMessage(media, { caption: message });
@@ -500,7 +504,7 @@ app.post('/send-message', authenticateApiKey, async (req, res) => {
                 sentMsg = await chat.sendMessage(message);
             }
         } catch (chatError) {
-            console.warn(`[API] Chat nesnesi alınırken hata oluştu veya doğrudan gönderiliyor:`, chatError.message);
+            console.warn(`[API] Contact/Chat akışında hata oluştu, doğrudan gönderiliyor:`, chatError.message);
             if (mediaUrl) {
                 const media = await MessageMedia.fromUrl(mediaUrl);
                 sentMsg = await client.sendMessage(chatId, media, { caption: message });
